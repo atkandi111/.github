@@ -1,0 +1,29 @@
+name: Agent implementation
+
+on:
+  issues:
+    types: [labeled]
+
+permissions:
+  actions: write
+  contents: write
+  issues: write
+  pull-requests: write
+
+jobs:
+  implement:
+    if: github.event.label.name == 'agent'
+    uses: YOUR_ORG/dev-platform/.github/workflows/agent.yml@DEV_PLATFORM_VERSION
+    with:
+      issue_number: ${{ github.event.issue.number }}
+      issue_title: ${{ github.event.issue.title }}
+      issue_body: ${{ github.event.issue.body }}
+      trigger_actor: ${{ github.actor }}
+      authorized_actors: ${{ vars.AGENT_AUTHORIZED_ACTORS }}
+      base_ref: ${{ github.event.repository.default_branch }}
+      pipeline_enabled: ${{ vars.PIPELINE_ENABLED }}
+      global_pipeline_enabled: ${{ vars.AGENT_PIPELINE_ENABLED }}
+      protected_paths: ${{ vars.AGENT_PROTECTED_PATHS }}
+    secrets:
+      openai_api_key: ${{ secrets.OPENAI_API_KEY }}
+

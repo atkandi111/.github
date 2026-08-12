@@ -1,0 +1,35 @@
+name: Client CI
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+  workflow_dispatch:
+    inputs:
+      base_ref:
+        description: Base branch name.
+        required: true
+        type: string
+      head_ref:
+        description: Branch or SHA to verify.
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    uses: YOUR_ORG/dev-platform/.github/workflows/ci.yml@DEV_PLATFORM_VERSION
+    with:
+      base_ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.ref || inputs.base_ref }}
+      head_ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || inputs.head_ref }}
+      protected_paths: ${{ vars.AGENT_PROTECTED_PATHS }}
+      build_command: ${{ vars.CI_BUILD_COMMAND }}
+      test_command: ${{ vars.CI_TEST_COMMAND }}
+      lint_command: ${{ vars.CI_LINT_COMMAND }}
+      typecheck_command: ${{ vars.CI_TYPECHECK_COMMAND }}
+
+  # Add a client-owned preview job here when the hosting provider supports one.
+  # It should need `verify`, deploy the exact head SHA, and use only a limited
+  # non-production GitHub Environment. Do not pass preview secrets to `verify`.
+

@@ -1,0 +1,137 @@
+name: Reusable deterministic CI
+
+on:
+  workflow_call:
+    inputs:
+      base_ref:
+        description: Base branch used for protected-path comparison.
+        required: true
+        type: string
+      head_ref:
+        description: Branch or SHA to verify.
+        required: true
+        type: string
+      protected_paths:
+        description: Optional newline-separated globs; empty uses safe defaults.
+        required: false
+        default: ""
+        type: string
+      build_command:
+        required: false
+        default: ""
+        type: string
+      test_command:
+        required: false
+        default: ""
+        type: string
+      lint_command:
+        required: false
+        default: ""
+        type: string
+      typecheck_command:
+        required: false
+        default: ""
+        type: string
+
+concurrency:
+  group: ci-${{ github.repository }}-${{ inputs.head_ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    name: Deterministic CI
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    steps:
+      - name: Check out proposed revision
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          ref: ${{ inputs.head_ref }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Enforce protected paths
+        shell: bash
+        env:
+          BASE_REF: ${{ inputs.base_ref }}
+          PROTECTED_PATHS: ${{ inputs.protected_paths }}
+          CHANGED_FILES: ${{ runner.temp }}/changed-files.txt
+        run: |
+          set -euo pipefail
+          git check-ref-format "refs/heads/$BASE_REF" >/dev/null
+          git fetch --no-tags origin "+refs/heads/$BASE_REF:refs/remotes/origin/$BASE_REF"
+          git diff --name-only "origin/$BASE_REF...HEAD" > "$CHANGED_FILES"
+          python3 - <<'PY'
+          import fnmatch
+          import os
+          import pathlib
+          import sys
+
+          defaults = """PROJECT.md
+          AGENTS.md
+          **/AGENTS.md
+          .github/workflows/**
+          .github/actions/**
+          infrastructure/**
+          terraform/**
+          **/*.tf
+          **/*.tfvars"""
+          raw = os.environ.get("PROTECTED_PATHS", "").strip() or defaults
+          patterns = [line.strip() for line in raw.splitlines() if line.strip() and not line.lstrip().startswith("#")]
+          changed = pathlib.Path(os.environ["CHANGED_FILES"]).read_text().splitlines()
+          blocked = [(path, pattern) for path in changed for pattern in patterns if fnmatch.fnmatchcase(path, pattern)]
+          if blocked:
+              for path, pattern in blocked:
+                  print(f"::error file={path}::Protected path matched '{pattern}'")
+              sys.exit(1)
+          print(f"Protected-path gate passed for {len(changed)} changed file(s).")
+          PY
+
+      - name: Build
+        if: inputs.build_command != ''
+        shell: bash
+        env:
+          CI_COMMAND: ${{ inputs.build_command }}
+        run: bash -euo pipefail -c "$CI_COMMAND"
+
+      - name: Test
+        if: inputs.test_command != ''
+        shell: bash
+        env:
+          CI_COMMAND: ${{ inputs.test_command }}
+        run: bash -euo pipefail -c "$CI_COMMAND"
+
+      - name: Lint
+        if: inputs.lint_command != ''
+        shell: bash
+        env:
+          CI_COMMAND: ${{ inputs.lint_command }}
+        run: bash -euo pipefail -c "$CI_COMMAND"
+
+      - name: Typecheck
+        if: inputs.typecheck_command != ''
+        shell: bash
+        env:
+          CI_COMMAND: ${{ inputs.typecheck_command }}
+        run: bash -euo pipefail -c "$CI_COMMAND"
+
+      - name: Report omitted checks
+        shell: bash
+        env:
+          BUILD_COMMAND: ${{ inputs.build_command }}
+          TEST_COMMAND: ${{ inputs.test_command }}
+          LINT_COMMAND: ${{ inputs.lint_command }}
+          TYPECHECK_COMMAND: ${{ inputs.typecheck_command }}
+        run: |
+          set -euo pipefail
+          for name in BUILD TEST LINT TYPECHECK; do
+            variable="${name}_COMMAND"
+            if [ -z "${!variable}" ]; then
+              echo "$name: not configured (skipped)" >> "$GITHUB_STEP_SUMMARY"
+            else
+              echo "$name: configured" >> "$GITHUB_STEP_SUMMARY"
+            fi
+          done
+
