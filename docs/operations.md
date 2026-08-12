@@ -30,7 +30,7 @@ Apply one or more correction labels during human review. After 20–30 agent PRs
 
 ### Optional variables
 
-- `AGENT_PROTECTED_PATHS`: newline-separated path globs. Empty uses the central defaults.
+- `AGENT_PROTECTED_PATHS`: newline-separated path globs added to the central defaults. Clients cannot remove the workflow, agent-instruction, infrastructure, or Terraform defaults.
 - `CI_BUILD_COMMAND`, `CI_TEST_COMMAND`, `CI_LINT_COMMAND`, `CI_TYPECHECK_COMMAND`: client-native deterministic commands. Leave a genuinely inapplicable command empty.
 - `CI_TIMEOUT_MINUTES`: currently documented for future tuning; V1 intentionally uses a central finite timeout.
 
@@ -58,6 +58,18 @@ There is no universal preview command. A client may add a separate `preview` job
 
 ## Version and rollout
 
+Pins verified on 2026-08-13:
+
+| Component | Version/tag | Immutable workflow SHA |
+| --- | --- | --- |
+| `openai/codex-action` | `v1.11` | `52fe01ec70a42f454c9d2ebd47598f9fd6893d56` |
+| Codex CLI | `0.147.0` | npm version fixed through the Action input |
+| `actions/checkout` | `v4.3.1` | `34e114876b0b11c390a56381ad16ebd13914f8d5` |
+| `actions/upload-artifact` | `v7.0.1` | `043fb46d1a93c77aae656e7c1c64a875d1fc6a0a` |
+| `actions/download-artifact` | `v8.0.1` | `3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c` |
+
+Re-verify the official manifest, release tag, and full SHA deliberately when updating a pin.
+
 1. Make and locally test a platform change.
 2. Point the canary caller at the exact candidate commit and run all canary cases.
 3. Create a simple annotated tag such as `v0.1.0` only after canary success.
@@ -65,4 +77,3 @@ There is no universal preview command. A client may add a separate `preview` job
 5. Never point client callers at `main`.
 
 To stop consuming a bad version, restore the prior tested tag in the tiny client callers. Do not force-move release tags.
-

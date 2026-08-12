@@ -22,7 +22,7 @@ Client repositories retain product truth in `PROJECT.md`, engineering context in
 
 - The `agent` label is authorization to spend API resources and create a proposed change, but only when the event actor is in the configured allowlist.
 - Issue title/body and other GitHub metadata are untrusted. They are passed as data and delimited in the Codex prompt; shell steps consume only quoted environment variables or fixed files.
-- Codex gets `contents: read`, a workspace-write sandbox with network disabled by default, and the official Action's default `drop-sudo` safety strategy. It does not get the write token used for publication.
+- Codex gets `contents: read`, the current `:workspace` permission profile with network disabled by default, and the official Action's `drop-sudo` safety strategy. It does not get the write token used for publication.
 - The publishing job downloads a fixed-name patch artifact into a clean checkout, validates it, rejects protected paths, then receives only the GitHub permissions needed to push, open a draft PR, label it, and dispatch CI.
 - Agent-written code never runs with privileged secrets. `pull_request_target` is forbidden.
 - Preview is deliberately client-owned because providers and credentials differ. Preview credentials must be non-production and narrowly scoped.
@@ -40,4 +40,3 @@ Plan → Approve → Build → Verify → Try → Repeat
 ```
 
 Planning assistance, Issue generation, AI review, model routing, multiple agents, judges, risk scoring, auto-merge, production automation, and Terraform are intentionally absent. A future subsystem is justified only by a recurring observed failure in real agent PRs.
-

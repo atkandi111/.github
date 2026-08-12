@@ -40,7 +40,7 @@ on:
         default: "true"
         type: string
       protected_paths:
-        description: Optional newline-separated globs; empty uses safe defaults.
+        description: Optional newline-separated globs added to immutable safe defaults.
         required: false
         default: ""
         type: string
@@ -182,7 +182,7 @@ jobs:
           allow-bots: "false"
           codex-version: "0.147.0"
           codex-args: '["--ephemeral"]'
-          output-file: ${{ runner.temp }}/codex-final-message.md
+          output-file: .codex-final-message.md
           prompt: |
             Implement the single authorized GitHub Issue below in this repository.
 
@@ -219,12 +219,13 @@ jobs:
         shell: bash
         env:
           RESULT_DIR: ${{ runner.temp }}/agent-result
-          CODEX_MESSAGE: ${{ runner.temp }}/codex-final-message.md
+          CODEX_MESSAGE: ${{ github.workspace }}/.codex-final-message.md
         run: |
           set -euo pipefail
           mkdir -p "$RESULT_DIR"
           test -s "$CODEX_MESSAGE"
           cp "$CODEX_MESSAGE" "$RESULT_DIR/final-message.md"
+          rm "$CODEX_MESSAGE"
           git add -N -- .
           git diff --binary --full-index --no-ext-diff --no-textconv HEAD > "$RESULT_DIR/changes.patch"
 
@@ -252,7 +253,6 @@ jobs:
       ISSUE_NUMBER: ${{ inputs.issue_number }}
       BASE_REF: ${{ inputs.base_ref }}
       ATTEMPT: ${{ needs.guard.outputs.attempt }}
-      RESULT_DIR: ${{ runner.temp }}/agent-result
       PROTECTED_PATHS: ${{ inputs.protected_paths }}
     steps:
       - name: Download Codex result
@@ -270,6 +270,8 @@ jobs:
       - name: Handle ambiguity or an empty result
         id: result
         shell: bash
+        env:
+          RESULT_DIR: ${{ runner.temp }}/agent-result
         run: |
           set -euo pipefail
           message="$RESULT_DIR/final-message.md"
@@ -305,6 +307,8 @@ jobs:
       - name: Apply patch without executing repository code
         if: steps.result.outputs.publish == 'true'
         shell: bash
+        env:
+          RESULT_DIR: ${{ runner.temp }}/agent-result
         run: |
           set -euo pipefail
           git apply --check "$RESULT_DIR/changes.patch"
@@ -333,9 +337,12 @@ jobs:
           .github/actions/**
           infrastructure/**
           terraform/**
+          *.tf
           **/*.tf
+          *.tfvars
           **/*.tfvars"""
-          raw = os.environ.get("PROTECTED_PATHS", "").strip() or defaults
+          extra = os.environ.get("PROTECTED_PATHS", "").strip()
+          raw = defaults + (f"\n{extra}" if extra else "")
           patterns = [line.strip() for line in raw.splitlines() if line.strip() and not line.lstrip().startswith("#")]
           changed = pathlib.Path(os.environ["CHANGED_FILES"]).read_text().splitlines()
           blocked = [(path, pattern) for path in changed for pattern in patterns if fnmatch.fnmatchcase(path, pattern)]
@@ -362,6 +369,8 @@ jobs:
       - name: Create isolated branch and draft PR
         if: steps.result.outputs.publish == 'true' && steps.protected.outcome == 'success'
         shell: bash
+        env:
+          RESULT_DIR: ${{ runner.temp }}/agent-result
         run: |
           set -euo pipefail
           branch="agent/issue-$ISSUE_NUMBER-attempt-$ATTEMPT"
@@ -390,4 +399,3 @@ jobs:
             -f head_ref="$branch"
           echo "Draft PR: $pr_url" >> "$GITHUB_STEP_SUMMARY"
           echo "Explicitly dispatched ci.yml for $branch." >> "$GITHUB_STEP_SUMMARY"
-

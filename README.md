@@ -36,11 +36,10 @@ Existing runs can be cancelled from the Actions UI. Provider budget and usage al
 
 ## Safety boundaries
 
-The Codex job has repository read permission and the OpenAI credential is brokered by the official Action. A separate job, without the OpenAI secret, validates and publishes the patch. Protected paths fail before push and again in CI. Issue content is passed as action data, never embedded in executable shell. Production credentials and shared infrastructure are outside this pipeline.
+The Codex job has repository read permission, a workspace-only permission profile, and an OpenAI credential brokered by the official Action. A separate job, without the OpenAI secret, validates and publishes the patch. Protected paths fail before push and again in CI. Issue content is passed as action data, never embedded in executable shell. Production credentials and shared infrastructure are outside this pipeline.
 
 See [`docs/architecture.md`](docs/architecture.md) for boundaries, [`docs/operations.md`](docs/operations.md) for setup and incidents, and [`docs/canary.md`](docs/canary.md) for rollout validation.
 
 ## Test a platform change
 
 Run `./tests/run.sh`, review the diff, test all six scenarios in the non-client canary, tag the tested commit, and roll it to one or two clients before broader adoption.
-
