@@ -74,7 +74,10 @@ jobs:
         run: |
           set -euo pipefail
           git check-ref-format "refs/heads/$BASE_REF" >/dev/null
-          git fetch --no-tags origin "+refs/heads/$BASE_REF:refs/remotes/origin/$BASE_REF"
+          if ! git show-ref --verify --quiet "refs/remotes/origin/$BASE_REF"; then
+            echo "::error::Base branch is missing from the full checkout: $BASE_REF"
+            exit 1
+          fi
           git diff --name-only "origin/$BASE_REF...HEAD" > "$CHANGED_FILES"
           python3 - <<'PY'
           import fnmatch

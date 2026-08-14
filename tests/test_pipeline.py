@@ -223,6 +223,10 @@ def test_guard_behavior() -> None:
 def test_privilege_and_trigger_boundaries() -> None:
     check("pull_request_target" not in ALL_WORKFLOWS, "privileged pull_request_target is forbidden")
     check("secrets: inherit" not in ALL_WORKFLOWS, "blanket secret inheritance is forbidden")
+    check("persist-credentials: false" in CI, "CI checkout credentials must not persist")
+    check("fetch-depth: 0" in CI, "CI must fetch history needed for the protected-path comparison")
+    check("git fetch" not in CI, "CI must not fetch after checkout removes credentials")
+    check("git show-ref --verify --quiet" in CI, "CI must verify the fetched base branch exists")
     check("permission-profile: \":workspace\"" in AGENT, "Codex workspace permission profile missing")
     check("safety-strategy: drop-sudo" in AGENT, "drop-sudo missing")
     check("codex-args: '[\"--ephemeral\"]'" in AGENT, "fresh ephemeral execution missing")
