@@ -1,5 +1,9 @@
 name: Reusable deterministic CI
 
+# =============================================================================
+# 1. CALL CONTRACT — revision, comparison base, and client-native commands
+# Empty commands are intentional skips; this workflow adds no stack opinion.
+# =============================================================================
 on:
   workflow_call:
     inputs:
@@ -33,11 +37,17 @@ on:
         default: ""
         type: string
 
+# =============================================================================
+# 2. REVISION RUN ISOLATION — keep only the newest run for one proposed revision
+# =============================================================================
 concurrency:
   group: ci-${{ github.repository }}-${{ inputs.head_ref }}
   cancel-in-progress: true
 
 jobs:
+  # ===========================================================================
+  # 3. VERIFY — read-only checkout, policy gate, then deterministic commands
+  # ===========================================================================
   verify:
     name: Deterministic CI
     runs-on: ubuntu-latest
@@ -45,6 +55,9 @@ jobs:
     permissions:
       contents: read
     steps:
+      # -----------------------------------------------------------------------
+      # 3A. SCOPE GATE — compare with the trusted base before running client code.
+      # -----------------------------------------------------------------------
       - name: Check out proposed revision
         uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
         with:
@@ -92,6 +105,9 @@ jobs:
           print(f"Protected-path gate passed for {len(changed)} changed file(s).")
           PY
 
+      # -----------------------------------------------------------------------
+      # 3B. CLIENT COMMAND CONTRACT — build, test, lint, and typecheck in order.
+      # -----------------------------------------------------------------------
       - name: Build
         if: inputs.build_command != ''
         shell: bash
@@ -120,6 +136,9 @@ jobs:
           CI_COMMAND: ${{ inputs.typecheck_command }}
         run: bash -euo pipefail -c "$CI_COMMAND"
 
+      # -----------------------------------------------------------------------
+      # 3C. SUMMARY — make every configured or intentionally omitted check clear.
+      # -----------------------------------------------------------------------
       - name: Report omitted checks
         shell: bash
         env:

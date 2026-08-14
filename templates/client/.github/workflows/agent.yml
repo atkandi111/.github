@@ -1,5 +1,9 @@
 name: Agent implementation
 
+# =============================================================================
+# 1. AUTHORIZATION EVENT — only an `agent` label event may call the platform
+# The reusable workflow performs the actor, kill-switch, and attempt checks.
+# =============================================================================
 on:
   issues:
     types: [labeled]
@@ -10,10 +14,14 @@ permissions:
   issues: write
   pull-requests: write
 
+# =============================================================================
+# 2. THIN PLATFORM CALL — product context stays in this client repository
+# `main` is the protected, canary-gated release channel for all normal clients.
+# =============================================================================
 jobs:
   implement:
     if: github.event.label.name == 'agent'
-    uses: YOUR_ORG/dev-platform/.github/workflows/agent.yml@DEV_PLATFORM_VERSION
+    uses: YOUR_ORG/dev-platform/.github/workflows/agent.yml@main
     with:
       issue_number: ${{ github.event.issue.number }}
       issue_title: ${{ github.event.issue.title }}
@@ -26,4 +34,3 @@ jobs:
       protected_paths: ${{ vars.AGENT_PROTECTED_PATHS }}
     secrets:
       openai_api_key: ${{ secrets.OPENAI_API_KEY }}
-

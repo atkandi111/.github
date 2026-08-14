@@ -1,5 +1,9 @@
 name: Reusable agent implementation
 
+# =============================================================================
+# 1. CALL CONTRACT — typed inputs from a thin client workflow
+# Issue title and body remain untrusted data throughout the workflow.
+# =============================================================================
 on:
   workflow_call:
     inputs:
@@ -30,14 +34,14 @@ on:
         default: main
         type: string
       pipeline_enabled:
-        description: Repository kill switch value; false disables new runs.
+        description: Repository kill switch value; only true enables new runs.
         required: false
-        default: "true"
+        default: "false"
         type: string
       global_pipeline_enabled:
-        description: Organization kill switch value; false disables new runs.
+        description: Organization kill switch value; only true enables new runs.
         required: false
-        default: "true"
+        default: "false"
         type: string
       protected_paths:
         description: Optional newline-separated globs added to immutable safe defaults.
@@ -59,11 +63,19 @@ on:
         description: OpenAI API key exposed only to the Codex job.
         required: true
 
+# =============================================================================
+# 2. ISSUE RUN ISOLATION — serialize attempts for one repository Issue
+# A later label event waits; it never cancels an in-progress implementation.
+# =============================================================================
 concurrency:
   group: agent-${{ github.repository }}-issue-${{ inputs.issue_number }}
   cancel-in-progress: false
 
 jobs:
+  # ===========================================================================
+  # 3. AUTHORIZE — fail closed before API spend or repository modification
+  # This job alone checks both kill switches, the actor, and the attempt cap.
+  # ===========================================================================
   guard:
     name: Authorize and reserve attempt
     runs-on: ubuntu-latest
@@ -91,19 +103,16 @@ jobs:
           echo "proceed=false" >> "$GITHUB_OUTPUT"
           echo "attempt=0" >> "$GITHUB_OUTPUT"
 
-          disabled() {
-            case "${1,,}" in
-              false|0|off|no) return 0 ;;
-              *) return 1 ;;
-            esac
+          enabled() {
+            [ "$1" = "true" ]
           }
 
-          if disabled "$PIPELINE_ENABLED"; then
-            echo "Repository kill switch is disabled." >> "$GITHUB_STEP_SUMMARY"
+          if ! enabled "$PIPELINE_ENABLED"; then
+            echo "Repository pipeline is not explicitly enabled." >> "$GITHUB_STEP_SUMMARY"
             exit 0
           fi
-          if disabled "$GLOBAL_PIPELINE_ENABLED"; then
-            echo "Organization kill switch is disabled." >> "$GITHUB_STEP_SUMMARY"
+          if ! enabled "$GLOBAL_PIPELINE_ENABLED"; then
+            echo "Organization pipeline is not explicitly enabled." >> "$GITHUB_STEP_SUMMARY"
             exit 0
           fi
 
@@ -155,6 +164,10 @@ jobs:
           echo "proceed=true" >> "$GITHUB_OUTPUT"
           echo "Reserved $attempt_label." >> "$GITHUB_STEP_SUMMARY"
 
+  # ===========================================================================
+  # 4. IMPLEMENT — read-only GitHub token plus the OpenAI credential
+  # Codex may edit only its workspace. Its result crosses jobs as data.
+  # ===========================================================================
   implement:
     name: Codex implementation
     needs: guard
@@ -183,6 +196,12 @@ jobs:
           codex-version: "0.147.0"
           codex-args: '["--ephemeral"]'
           output-file: .codex-final-message.md
+          # ===================================================================
+          # CANONICAL IMPLEMENTATION CONTRACT
+          # Keep the complete agent authority and reporting contract here.
+          # Client repositories provide product truth through PROJECT.md and
+          # engineering instructions through their applicable AGENTS.md files.
+          # ===================================================================
           prompt: |
             Implement the single authorized GitHub Issue below in this repository.
 
@@ -215,6 +234,9 @@ jobs:
             ${{ inputs.issue_body }}
             </untrusted_issue>
 
+      # -----------------------------------------------------------------------
+      # OUTPUT BOUNDARY — capture data only; do not run repository code here.
+      # -----------------------------------------------------------------------
       - name: Capture the patch as data
         shell: bash
         env:
@@ -237,6 +259,10 @@ jobs:
           if-no-files-found: error
           retention-days: 1
 
+  # ===========================================================================
+  # 5. PUBLISH — write-enabled job with no OpenAI credential
+  # Rebuild trust from a clean checkout before creating a branch or draft PR.
+  # ===========================================================================
   publish:
     name: Validate and publish draft PR
     needs: [guard, implement]
@@ -255,6 +281,9 @@ jobs:
       ATTEMPT: ${{ needs.guard.outputs.attempt }}
       PROTECTED_PATHS: ${{ inputs.protected_paths }}
     steps:
+      # -----------------------------------------------------------------------
+      # 5A. INTAKE — download and classify the isolated Codex result.
+      # -----------------------------------------------------------------------
       - name: Download Codex result
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
@@ -304,6 +333,9 @@ jobs:
           done
           echo "publish=true" >> "$GITHUB_OUTPUT"
 
+      # -----------------------------------------------------------------------
+      # 5B. POLICY GATE — apply as data, then reject every protected path.
+      # -----------------------------------------------------------------------
       - name: Apply patch without executing repository code
         if: steps.result.outputs.publish == 'true'
         shell: bash
@@ -366,6 +398,9 @@ jobs:
           gh issue comment "$ISSUE_NUMBER" --repo "$GITHUB_REPOSITORY" --body-file "$body"
           exit 1
 
+      # -----------------------------------------------------------------------
+      # 5C. PUBLICATION — branch, draft PR, Issue link, and explicit CI dispatch.
+      # -----------------------------------------------------------------------
       - name: Create isolated branch and draft PR
         if: steps.result.outputs.publish == 'true' && steps.protected.outcome == 'success'
         shell: bash
