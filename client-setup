@@ -167,7 +167,8 @@ check_client() {
 GitHub checklist (not modified by this command):
 - Secret: OPENAI_API_KEY
 - Variables: AGENT_AUTHORIZED_ACTORS, PIPELINE_ENABLED=true
-- Organization variable: AGENT_PIPELINE_ENABLED=true
+- Variable: AGENT_PIPELINE_ENABLED=true (organization-wide when available,
+  otherwise set it separately in every personal-account repository)
 - Optional variables: AGENT_PROTECTED_PATHS and CI_*_COMMAND
 - Label: agent
 - Actions may create pull requests

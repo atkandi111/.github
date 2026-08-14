@@ -53,8 +53,8 @@ Protecting `main` is the preferred enforcement. While this repository remains
 private on a plan that does not support branch protection, the maintainer has
 explicitly accepted that temporary risk. Every change must still go through a
 pull request, review, exact-SHA canary testing, and the local test suite; direct
-and force pushes to `main` are prohibited by policy, and the global kill switch
-must remain ready. Enable branch protection immediately when the repository
+and force pushes to `main` are prohibited by policy, and all available kill
+switches must remain ready. Enable branch protection immediately when the repository
 becomes public or its plan supports it. A dedicated non-client canary is the
 only repository that may temporarily pin a candidate SHA.
 
@@ -72,8 +72,11 @@ Required variables:
   authorize a run. Start with one maintainer.
 - `PIPELINE_ENABLED` — must be exactly `true`; missing, invalid, or any other
   value prevents new runs.
-- Organization variable `AGENT_PIPELINE_ENABLED` — must be exactly `true`;
-  missing, invalid, or any other value prevents new runs portfolio-wide.
+- `AGENT_PIPELINE_ENABLED` — must be exactly `true`. Define it once as an
+  organization variable when clients are organization-owned. For repositories
+  owned by a personal account, define it separately in every repository;
+  GitHub provides no account-wide repository variable in that ownership model.
+  Missing, invalid, or any other value prevents new runs.
 
 Optional variables:
 
@@ -149,8 +152,10 @@ Otherwise its final report uses exactly these headings:
 ## Stop the pipeline
 
 - One repository: set `PIPELINE_ENABLED=false`.
-- Entire portfolio: set the organization variable
+- Organization-owned portfolio: set the organization variable
   `AGENT_PIPELINE_ENABLED=false`.
+- Personal-account repositories: set `AGENT_PIPELINE_ENABLED=false` in every
+  connected repository. This is not an atomic portfolio-wide stop.
 - Emergency fallback: disable **Agent implementation** in the affected
   repository's Actions UI.
 
@@ -255,16 +260,18 @@ Record run links, PRs/comments, labels, checks, and preview URLs. After all
 cases pass:
 
 1. Attach the canary evidence to the `dev-platform` pull request.
-2. Confirm the global kill switch can stop new runs.
+2. Confirm the organization kill switch, or every required personal-account
+   repository switch, can stop new runs.
 3. Merge the reviewed candidate into `main` through its pull request. Enforce
    this with branch protection when the repository plan or visibility permits.
 4. All normal clients automatically consume that merged workflow on their next
    run; monitor the first executions closely.
 
-For an incident, set `AGENT_PIPELINE_ENABLED=false` before doing anything else.
+For an incident, set `AGENT_PIPELINE_ENABLED=false` before doing anything else:
+once at organization scope, or in every personal-account client repository.
 Revert the offending `main` commit through the same reviewed workflow, verify
-the restored behavior, then re-enable the pipeline. Do not force-push or rewrite
-`main`.
+the restored behavior, then re-enable the pipeline. Do not force-push or
+rewrite `main`.
 
 Current external pins, verified 2026-08-13:
 
