@@ -28,18 +28,6 @@ on:
         description: Comma-separated exact GitHub usernames.
         required: true
         type: string
-      openai_wif_audience:
-        description: Audience configured on the OpenAI Workload Identity Provider.
-        required: true
-        type: string
-      openai_identity_provider_id:
-        description: OpenAI Workload Identity Provider ID for GitHub Actions.
-        required: true
-        type: string
-      openai_service_account_id:
-        description: OpenAI project service account mapped to this workload.
-        required: true
-        type: string
       base_ref:
         description: Target branch name.
         required: false
@@ -70,6 +58,10 @@ on:
         required: false
         default: 45
         type: number
+    secrets:
+      openai_api_key:
+        description: Dedicated project service-account API key used only by the official Codex Action proxy.
+        required: true
 
 # =============================================================================
 # 2. ISSUE RUN ISOLATION — serialize attempts for one repository Issue
@@ -105,9 +97,6 @@ jobs:
           AUTHORIZED_ACTORS: ${{ inputs.authorized_actors }}
           PIPELINE_ENABLED: ${{ inputs.pipeline_enabled }}
           GLOBAL_PIPELINE_ENABLED: ${{ inputs.global_pipeline_enabled }}
-          OPENAI_WIF_AUDIENCE: ${{ inputs.openai_wif_audience }}
-          OPENAI_IDENTITY_PROVIDER_ID: ${{ inputs.openai_identity_provider_id }}
-          OPENAI_SERVICE_ACCOUNT_ID: ${{ inputs.openai_service_account_id }}
           MAX_ATTEMPTS: ${{ inputs.max_attempts }}
         run: |
           set -euo pipefail
@@ -126,16 +115,6 @@ jobs:
             echo "Organization pipeline is not explicitly enabled." >> "$GITHUB_STEP_SUMMARY"
             exit 0
           fi
-
-          for value in \
-            "$OPENAI_WIF_AUDIENCE" \
-            "$OPENAI_IDENTITY_PROVIDER_ID" \
-            "$OPENAI_SERVICE_ACCOUNT_ID"; do
-            if [ -z "$value" ]; then
-              echo "::error::OpenAI workload identity configuration is incomplete."
-              exit 1
-            fi
-          done
 
           actor_allowed=false
           IFS=',' read -r -a allowed <<< "$AUTHORIZED_ACTORS"
@@ -186,7 +165,7 @@ jobs:
           echo "Reserved $attempt_label." >> "$GITHUB_STEP_SUMMARY"
 
   # ===========================================================================
-  # 4. IMPLEMENT — exchange GitHub OIDC for a short-lived OpenAI token
+  # 4. IMPLEMENT — read-only GitHub token plus the OpenAI credential
   # Codex may edit only its workspace. Its result crosses jobs as data.
   # ===========================================================================
   implement:
@@ -197,7 +176,6 @@ jobs:
     timeout-minutes: ${{ inputs.agent_timeout_minutes }}
     permissions:
       contents: read
-      id-token: write
     steps:
       - name: Check out the trusted base
         uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
@@ -206,107 +184,11 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
 
-      - name: Exchange GitHub OIDC for a short-lived OpenAI token
-        id: openai_auth
-        shell: bash
-        env:
-          OPENAI_WIF_AUDIENCE: ${{ inputs.openai_wif_audience }}
-          OPENAI_IDENTITY_PROVIDER_ID: ${{ inputs.openai_identity_provider_id }}
-          OPENAI_SERVICE_ACCOUNT_ID: ${{ inputs.openai_service_account_id }}
-        run: |
-          set -euo pipefail
-          python3 - <<'PY'
-          import json
-          import os
-          import urllib.parse
-          import urllib.request
-
-          audience = os.environ["OPENAI_WIF_AUDIENCE"]
-          identity_provider_id = os.environ["OPENAI_IDENTITY_PROVIDER_ID"]
-          service_account_id = os.environ["OPENAI_SERVICE_ACCOUNT_ID"]
-          request_url = os.environ["ACTIONS_ID_TOKEN_REQUEST_URL"]
-          request_token = os.environ["ACTIONS_ID_TOKEN_REQUEST_TOKEN"]
-
-          parsed = urllib.parse.urlsplit(request_url)
-          query = [
-              (key, value)
-              for key, value in urllib.parse.parse_qsl(parsed.query, keep_blank_values=True)
-              if key != "audience"
-          ]
-          query.append(("audience", audience))
-          oidc_url = urllib.parse.urlunsplit(
-              parsed._replace(query=urllib.parse.urlencode(query))
-          )
-
-          oidc_request = urllib.request.Request(
-              oidc_url,
-              headers={"Authorization": f"bearer {request_token}"},
-          )
-          with urllib.request.urlopen(oidc_request, timeout=30) as response:
-              subject_token = json.load(response).get("value", "")
-          if not isinstance(subject_token, str) or not subject_token:
-              raise RuntimeError("GitHub OIDC response did not include a subject token")
-
-          exchange_body = json.dumps(
-              {
-                  "grant_type": "urn:ietf:params:oauth:grant-type:token-exchange",
-                  "subject_token_type": "urn:ietf:params:oauth:token-type:jwt",
-                  "subject_token": subject_token,
-                  "identity_provider_id": identity_provider_id,
-                  "service_account_id": service_account_id,
-              }
-          ).encode()
-          exchange_request = urllib.request.Request(
-              "https://auth.openai.com/oauth/token",
-              data=exchange_body,
-              headers={"Content-Type": "application/json"},
-              method="POST",
-          )
-          with urllib.request.urlopen(exchange_request, timeout=30) as response:
-              exchange = json.load(response)
-
-          access_token = exchange.get("access_token", "")
-          expires_in = exchange.get("expires_in", 0)
-          scopes = set(exchange.get("scope", "").split())
-          expected_scopes = {
-              "api.model.audio.request",
-              "api.model.chat_completions.request",
-              "api.model.embeddings.request",
-              "api.model.images.request",
-              "api.model.moderations.request",
-              "api.model.read",
-              "api.model.realtime.request",
-              "api.model.request",
-              "api.responses.read",
-              "api.responses.write",
-              "model.read",
-              "model.request",
-          }
-          if not isinstance(access_token, str) or not access_token or "\n" in access_token or "\r" in access_token:
-              raise RuntimeError("OpenAI token exchange did not return a valid access token")
-          if exchange.get("token_type") != "Bearer":
-              raise RuntimeError("OpenAI token exchange returned an unexpected token type")
-          if not isinstance(expires_in, int) or not 0 < expires_in <= 3600:
-              raise RuntimeError("OpenAI token exchange returned an invalid token lifetime")
-          if scopes != expected_scopes:
-              returned_scopes = ", ".join(sorted(scopes)) or "(none)"
-              raise RuntimeError(
-                  f"OpenAI workload mapping returned unexpected scopes: {returned_scopes}"
-              )
-
-          print(f"::add-mask::{access_token}")
-          with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as output:
-              output.write(f"access_token={access_token}\n")
-          PY
-
       - name: Run fresh Codex implementation
         id: codex
         uses: openai/codex-action@52fe01ec70a42f454c9d2ebd47598f9fd6893d56 # v1.11
-        env:
-          ACTIONS_ID_TOKEN_REQUEST_URL: ""
-          ACTIONS_ID_TOKEN_REQUEST_TOKEN: ""
         with:
-          openai-api-key: ${{ steps.openai_auth.outputs.access_token }}
+          openai-api-key: ${{ secrets.openai_api_key }}
           permission-profile: ":workspace"
           safety-strategy: drop-sudo
           allow-users: ${{ inputs.authorized_actors }}
