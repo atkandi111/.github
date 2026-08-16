@@ -61,12 +61,33 @@ Complete `PROJECT.md` with confirmed human-owned product direction and
 `AGENTS.md` with the repository map, commands, and engineering conventions.
 Create the `agent` label, then configure the following GitHub values.
 
-Required secret:
+### Configure OpenAI workload identity
 
-- `OPENAI_API_KEY` — exposed only to the Codex job through the official Action.
+An OpenAI organization owner must create a GitHub Actions Workload Identity
+Provider under **Organization settings → Security → Workload Identity
+Provider**. Use:
+
+- Issuer: `https://token.actions.githubusercontent.com`
+- Audience: a stable value such as `https://api.openai.com/v1`
+- GitHub OIDC discovery; do not upload private key material.
+
+Map the provider to a dedicated OpenAI project service account with only
+`api.model.read` and `api.model.request`. Match the exact client repository,
+caller `workflow_ref`, and reusable `job_workflow_ref` claims. For a normal
+client, the reusable workflow claim should end in
+`dev-platform/.github/workflows/agent.yml@refs/tags/v1`. Use a separate
+non-production mapping for the canary; it may use a trailing wildcard after the
+same workflow path so exact candidate SHAs can be tested. Do not trust only the
+repository owner or a broad organization wildcard.
+
+OpenAI's setup guide explains the dashboard fields and claim formats:
+[GitHub Actions workload identity federation](https://developers.openai.com/api/docs/guides/workload-identity-federation/github-actions).
 
 Required variables:
 
+- `OPENAI_WIF_AUDIENCE` — exact audience configured on the provider.
+- `OPENAI_IDENTITY_PROVIDER_ID` — ID of that OpenAI provider.
+- `OPENAI_SERVICE_ACCOUNT_ID` — ID of the mapped project service account.
 - `AGENT_AUTHORIZED_ACTORS` — comma-separated exact GitHub usernames allowed to
   authorize a run. Start with one maintainer.
 - `PIPELINE_ENABLED` — must be exactly `true`; missing, invalid, or any other
@@ -159,9 +180,10 @@ Otherwise its final report uses exactly these headings:
 - Emergency fallback: disable **Agent implementation** in the affected
   repository's Actions UI.
 
-Cancel existing runs from GitHub Actions. Rotate `OPENAI_API_KEY` if exposure is
-suspected. Provider budgets and usage alerts are required operational controls,
-not custom services in this repository.
+Cancel existing runs from GitHub Actions. Disable the affected OpenAI workload
+identity mapping if its trusted claims or service account are suspected to be
+wrong. Exchanged tokens expire within one hour and have no refresh token.
+Provider budgets and usage alerts remain required operational controls.
 
 ## Security and architecture
 
@@ -177,12 +199,16 @@ Trust boundaries:
   actor exactly matches the configured allowlist.
 - Issue title/body and GitHub metadata are untrusted data. They are delimited in
   the prompt and never interpolated into shell source.
+- The implementation job alone receives `id-token: write`. It exchanges the
+  GitHub OIDC identity for a short-lived OpenAI access token, then clears the
+  OIDC request environment before starting Codex.
 - Codex receives repository read permission, the `:workspace` permission
-  profile, `drop-sudo`, an ephemeral session, and the OpenAI secret. It does not
-  receive the write token used for publication.
+  profile, `drop-sudo`, an ephemeral session, and access through the Action's
+  protected API proxy. It receives neither a long-lived OpenAI key nor the
+  write token used for publication.
 - The Codex job captures only a binary patch and final message. No repository
   script executes after Codex in that job.
-- A clean publishing job without the OpenAI secret validates the patch and
+- A clean publishing job without OpenAI credentials validates the patch and
   protected paths before receiving the narrow permissions needed to push a
   branch, create a draft PR, label it, and dispatch CI.
 - Agent-written code never runs with privileged secrets. `pull_request_target`
@@ -205,8 +231,14 @@ workflow.
 ### Design decisions
 
 Publication and reasoning are separate jobs so Codex never shares a write token
-with the OpenAI credential. Fixed patch capture and artifact upload are the only
+with OpenAI access. Fixed patch capture and artifact upload are the only
 post-Codex operations in the reasoning job.
+
+V1 uses native OpenAI workload identity federation instead of a stored API key.
+The trusted workflow exchanges GitHub's signed OIDC token for an OpenAI bearer
+token that lasts at most one hour. The existing Codex Action proxy then isolates
+that bearer token from the Codex process. OpenAI provider and service-account
+IDs are identifiers stored as GitHub variables, not credentials.
 
 The publisher explicitly dispatches `ci.yml` because most events created by a
 repository `GITHUB_TOKEN` do not recursively start workflows. This requires
@@ -221,7 +253,8 @@ lifecycles.
 
 References: [GitHub workflow triggering](https://docs.github.com/en/actions/how-tos/write-workflows/choose-when-workflows-run/trigger-a-workflow),
 [reusable workflows](https://docs.github.com/en/actions/using-workflows/reusing-workflows),
-and the [OpenAI Codex GitHub Action](https://learn.chatgpt.com/docs/github-action).
+the [OpenAI Codex GitHub Action](https://learn.chatgpt.com/docs/github-action),
+and [OpenAI workload identity token exchange](https://developers.openai.com/api/reference/workload-identity-federation).
 
 ## Test and merge a platform change
 
@@ -250,11 +283,13 @@ Required canary cases:
 | CI failure | Intentionally fail one configured check. | Deterministic CI is red. |
 | Protected path | Request a change to `PROJECT.md` or `.github/workflows/**`. | No agent branch is published; the protected-path gate fails. CI also rejects an equivalent human PR. |
 | Underspecified | `Improve the homepage CTA.` | The Issue receives `HUMAN INPUT REQUIRED`; no branch or PR is created. |
+| Identity mismatch | Use a claim that does not match the OpenAI workload mapping. | Token exchange fails; Codex and publication do not run. |
 
 Also verify both sides of every guard: authorized and unauthorized actor, each
-kill switch set to `true` and disabled/unset, first through third attempts and a
-fourth attempt, normal and protected paths, same-Issue concurrency, and finite
-timeouts. Restore variables after each case.
+kill switch set to `true` and disabled/unset, complete and incomplete workload
+identity configuration, matching and mismatched identity claims, first through
+third attempts and a fourth attempt, normal and protected paths, same-Issue
+concurrency, and finite timeouts. Restore variables after each case.
 
 Record run links, PRs/comments, labels, checks, and preview URLs. After all
 cases pass:

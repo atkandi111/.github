@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import json
 import os
 import pathlib
 import re
@@ -10,6 +11,10 @@ import subprocess
 import sys
 import tempfile
 import textwrap
+import urllib.parse
+import urllib.request
+from io import StringIO
+from unittest import mock
 
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
@@ -83,6 +88,9 @@ def run_guard(
     global_pipeline_enabled: str = "true",
     trigger_actor: str = "maintainer",
     authorized_actors: str = "maintainer",
+    openai_wif_audience: str = "https://api.openai.com/v1",
+    openai_identity_provider_id: str = "wip_test",
+    openai_service_account_id: str = "svc_test",
     labels: tuple[str, ...] = (),
     max_attempts: str = "3",
 ) -> tuple[int, dict[str, str], str, str]:
@@ -131,6 +139,9 @@ printf '{"labels":["%s"]}\\n' "$4"
                 "AUTHORIZED_ACTORS": authorized_actors,
                 "PIPELINE_ENABLED": pipeline_enabled,
                 "GLOBAL_PIPELINE_ENABLED": global_pipeline_enabled,
+                "OPENAI_WIF_AUDIENCE": openai_wif_audience,
+                "OPENAI_IDENTITY_PROVIDER_ID": openai_identity_provider_id,
+                "OPENAI_SERVICE_ACCOUNT_ID": openai_service_account_id,
                 "MAX_ATTEMPTS": max_attempts,
                 "RUNNER_TEMP": str(runner_temp),
                 "FAKE_GH_CALLS": str(gh_calls),
@@ -153,6 +164,54 @@ printf '{"labels":["%s"]}\\n' "$4"
         summary_text = summary.read_text() if summary.exists() else ""
         calls = gh_calls.read_text() if gh_calls.exists() else ""
         return result.returncode, outputs, summary_text, calls
+
+
+def run_wif_exchange(
+    *,
+    oidc_payload: dict[str, object] | None = None,
+    exchange_payload: dict[str, object] | None = None,
+) -> tuple[list[urllib.request.Request], str, str, BaseException | None]:
+    blocks = [block for block in embedded_python_blocks(AGENT) if "OPENAI_WIF_AUDIENCE" in block]
+    check(len(blocks) == 1, f"expected one workload identity implementation, found {len(blocks)}")
+    responses = [
+        oidc_payload if oidc_payload is not None else {"value": "github-subject-token"},
+        exchange_payload
+        if exchange_payload is not None
+        else {
+            "access_token": "openai-access-token",
+            "expires_in": 3600,
+            "scope": "api.model.read api.model.request",
+            "token_type": "Bearer",
+        },
+    ]
+    requests: list[urllib.request.Request] = []
+
+    def fake_urlopen(request: urllib.request.Request, timeout: int) -> StringIO:
+        check(timeout == 30, "workload identity requests must have a finite timeout")
+        requests.append(request)
+        return StringIO(json.dumps(responses.pop(0)))
+
+    with tempfile.TemporaryDirectory() as directory:
+        output_path = pathlib.Path(directory) / "github-output.txt"
+        env = {
+            "OPENAI_WIF_AUDIENCE": "https://api.openai.com/v1",
+            "OPENAI_IDENTITY_PROVIDER_ID": "wip_test",
+            "OPENAI_SERVICE_ACCOUNT_ID": "svc_test",
+            "ACTIONS_ID_TOKEN_REQUEST_URL": "https://github.example/oidc?api-version=1",
+            "ACTIONS_ID_TOKEN_REQUEST_TOKEN": "github-request-secret",
+            "GITHUB_OUTPUT": str(output_path),
+        }
+        stdout = StringIO()
+        error: BaseException | None = None
+        with mock.patch.dict(os.environ, env, clear=False), mock.patch(
+            "urllib.request.urlopen", side_effect=fake_urlopen
+        ), mock.patch("sys.stdout", stdout):
+            try:
+                exec(blocks[0], {})
+            except BaseException as caught:
+                error = caught
+        output = output_path.read_text() if output_path.exists() else ""
+        return requests, output, stdout.getvalue(), error
 
 
 def test_action_pins() -> None:
@@ -220,6 +279,86 @@ def test_guard_behavior() -> None:
     check(outputs.get("proceed") == "true", "run below the attempt cap should proceed")
     check(outputs.get("attempt") == "2", "run below the attempt cap should reserve the next attempt")
 
+    for field in (
+        "openai_wif_audience",
+        "openai_identity_provider_id",
+        "openai_service_account_id",
+    ):
+        code, outputs, _, calls = run_guard(**{field: ""})
+        check(code != 0, f"missing {field} must fail closed")
+        check(outputs.get("proceed") == "false", f"missing {field} must not proceed")
+        check(calls == "", f"missing {field} must fail before GitHub mutation")
+
+
+def test_workload_identity_exchange() -> None:
+    requests, output, stdout, error = run_wif_exchange()
+    check(error is None, f"valid workload identity exchange failed: {error}")
+    check(len(requests) == 2, "workload identity must make exactly two requests")
+
+    oidc_request, exchange_request = requests
+    parsed = urllib.parse.urlsplit(oidc_request.full_url)
+    query = dict(urllib.parse.parse_qsl(parsed.query))
+    check(query.get("audience") == "https://api.openai.com/v1", "OIDC audience missing")
+    check(oidc_request.get_header("Authorization") == "bearer github-request-secret", "OIDC bearer missing")
+    check(exchange_request.full_url == "https://auth.openai.com/oauth/token", "OpenAI token endpoint changed")
+    check(exchange_request.get_method() == "POST", "OpenAI token exchange must use POST")
+    exchange = json.loads((exchange_request.data or b"").decode())
+    check(exchange["grant_type"] == "urn:ietf:params:oauth:grant-type:token-exchange", "grant type changed")
+    check(exchange["subject_token_type"] == "urn:ietf:params:oauth:token-type:jwt", "token type changed")
+    check(exchange["subject_token"] == "github-subject-token", "GitHub subject token not exchanged")
+    check(exchange["identity_provider_id"] == "wip_test", "provider ID missing")
+    check(exchange["service_account_id"] == "svc_test", "service account ID missing")
+    check(output == "access_token=openai-access-token\n", "access token output changed")
+    check("::add-mask::openai-access-token" in stdout, "access token must be masked before output")
+    check("github-subject-token" not in stdout, "GitHub subject token must never be logged")
+
+    _, output, _, error = run_wif_exchange(oidc_payload={})
+    check(isinstance(error, RuntimeError), "missing GitHub subject token must fail")
+    check(output == "", "failed OIDC exchange must not emit a credential")
+
+    for payload in (
+        {"expires_in": 3600},
+        {
+            "access_token": "openai-access-token",
+            "expires_in": 0,
+            "scope": "api.model.read api.model.request",
+            "token_type": "Bearer",
+        },
+        {
+            "access_token": "openai-access-token",
+            "expires_in": 3601,
+            "scope": "api.model.read api.model.request",
+            "token_type": "Bearer",
+        },
+        {
+            "access_token": "unsafe\ntoken",
+            "expires_in": 3600,
+            "scope": "api.model.read api.model.request",
+            "token_type": "Bearer",
+        },
+        {
+            "access_token": "openai-access-token",
+            "expires_in": 3600,
+            "scope": "api.model.request",
+            "token_type": "Bearer",
+        },
+        {
+            "access_token": "openai-access-token",
+            "expires_in": 3600,
+            "scope": "api.model.read api.model.request api.vector_store.read",
+            "token_type": "Bearer",
+        },
+        {
+            "access_token": "openai-access-token",
+            "expires_in": 3600,
+            "scope": "api.model.read api.model.request",
+            "token_type": "MAC",
+        },
+    ):
+        _, output, _, error = run_wif_exchange(exchange_payload=payload)
+        check(isinstance(error, RuntimeError), f"invalid OpenAI token response must fail: {payload}")
+        check(output == "", "invalid OpenAI token response must not emit a credential")
+
 
 def test_privilege_and_trigger_boundaries() -> None:
     check("pull_request_target" not in ALL_WORKFLOWS, "privileged pull_request_target is forbidden")
@@ -235,8 +374,15 @@ def test_privilege_and_trigger_boundaries() -> None:
     implement = AGENT.split("  implement:", 1)[1].split("  publish:", 1)[0]
     publish = AGENT.split("  publish:", 1)[1]
     check("contents: read" in implement and "contents: write" not in implement, "Codex job must be read-token only")
+    check("id-token: write" in implement, "Codex job must be able to request GitHub OIDC")
+    check(AGENT.count("id-token: write") == 1, "only the Codex job may request GitHub OIDC")
     check("contents: write" in publish and "actions: write" in publish, "publishing permissions missing")
-    check("openai_api_key" not in publish, "OpenAI secret leaked into publishing job")
+    check("openai_api_key" not in AGENT, "long-lived OpenAI API key contract remains")
+    check("secrets." not in implement, "Codex job must not consume a stored secret")
+    check("steps.openai_auth.outputs.access_token" in implement, "Codex Action must use the exchanged token")
+    check('ACTIONS_ID_TOKEN_REQUEST_URL: ""' in implement, "Codex must not inherit the OIDC request URL")
+    check('ACTIONS_ID_TOKEN_REQUEST_TOKEN: ""' in implement, "Codex must not inherit the OIDC request token")
+    check("https://auth.openai.com/oauth/token" in implement, "fixed OpenAI token endpoint missing")
     check("gh workflow run ci.yml" in publish, "explicit CI dispatch missing")
     check("--draft" in publish, "PR must be draft")
     check("--input -" in AGENT, "attempt label JSON must be passed as data")
@@ -269,10 +415,24 @@ def test_contracts() -> None:
     check('git commit -m "chore(issue):' in AGENT, "publisher commit must use a Conventional Commit subject")
     check("immutable `v1.x.y` release" in README, "immutable release contract missing")
     check("compatibility tag `v1`" in README, "moving v1 release channel missing")
+    check("workload identity federation" in README.lower(), "workload identity documentation missing")
+    for variable in (
+        "OPENAI_WIF_AUDIENCE",
+        "OPENAI_IDENTITY_PROVIDER_ID",
+        "OPENAI_SERVICE_ACCOUNT_ID",
+    ):
+        check(variable in CLIENT_AGENT, f"client caller missing {variable}")
+    check("id-token: write" in CLIENT_AGENT, "client caller must grant OIDC permission")
+    check("secrets:" not in CLIENT_AGENT, "client caller must not pass stored secrets")
+    check("OPENAI_API_KEY" not in README + CLIENT_AGENT, "obsolete OpenAI API key guidance remains")
 
 
 def test_protected_path_code() -> None:
-    blocks = embedded_python_blocks(AGENT) + embedded_python_blocks(CI)
+    blocks = [
+        block
+        for block in embedded_python_blocks(AGENT) + embedded_python_blocks(CI)
+        if "CHANGED_FILES" in block
+    ]
     check(len(blocks) == 2, f"expected two protected-path implementations, found {len(blocks)}")
     for code in blocks:
         check(run_protected_matcher(code, ["src/app.ts"]) == 0, "normal path should pass")
@@ -369,6 +529,30 @@ def test_client_setup() -> None:
         )
         check(ready.returncode == 0, f"completed client setup should pass: {ready.stdout}")
 
+        agent_caller = target / ".github/workflows/agent.yml"
+        original_agent = agent_caller.read_text()
+        agent_caller.write_text(original_agent.replace("id-token: write", "id-token: read"))
+        missing_oidc = subprocess.run(
+            [str(CLIENT_SETUP), "check", str(target)],
+            text=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            check=False,
+        )
+        check(missing_oidc.returncode != 0, "client missing OIDC permission should fail readiness")
+        agent_caller.write_text(original_agent)
+
+        agent_caller.write_text(original_agent + "\nsecrets:\n  OPENAI_API_KEY: obsolete\n")
+        obsolete_secret = subprocess.run(
+            [str(CLIENT_SETUP), "check", str(target)],
+            text=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            check=False,
+        )
+        check(obsolete_secret.returncode != 0, "client with a stored OpenAI secret should fail readiness")
+        agent_caller.write_text(original_agent)
+
         ci_caller = target / ".github/workflows/ci.yml"
         ci_caller.write_text(
             ci_caller.read_text()
@@ -446,6 +630,7 @@ def main() -> None:
         test_untrusted_input_is_not_shell_source,
         test_guard_contract,
         test_guard_behavior,
+        test_workload_identity_exchange,
         test_privilege_and_trigger_boundaries,
         test_contracts,
         test_protected_path_code,

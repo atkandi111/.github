@@ -23,7 +23,7 @@ usage:
 Normal clients follow the reviewed dev-platform v1 release channel automatically.
 The canary-only commands accept a full 40-character candidate commit SHA so a
 platform change can be tested before it reaches v1. The installer never
-overwrites an existing file or configures GitHub settings and secrets.
+overwrites an existing file or configures GitHub or OpenAI settings.
 EOF
 }
 
@@ -139,6 +139,23 @@ check_client() {
       failed=true
     fi
 
+    local required_wif_value
+    for required_wif_value in \
+      'id-token: write' \
+      'vars.OPENAI_WIF_AUDIENCE' \
+      'vars.OPENAI_IDENTITY_PROVIDER_ID' \
+      'vars.OPENAI_SERVICE_ACCOUNT_ID'; do
+      if ! grep -Fq "$required_wif_value" "$target/.github/workflows/agent.yml"; then
+        echo "agent workflow caller is missing the GitHub OIDC/OpenAI workload identity contract" >&2
+        failed=true
+      fi
+    done
+    if grep -Eq 'OPENAI_API_KEY|^[[:space:]]*secrets:' \
+      "$target/.github/workflows/agent.yml"; then
+      echo "agent workflow caller must not use a stored OpenAI secret" >&2
+      failed=true
+    fi
+
     local agent_ref ci_ref agent_repository ci_repository agent_version ci_version
     agent_ref=$(sed -nE 's|^[[:space:]]*uses:[[:space:]]+([^[:space:]]+/\.github/workflows/agent\.yml@[^[:space:]]+).*$|\1|p' \
       "$target/.github/workflows/agent.yml")
@@ -165,8 +182,9 @@ check_client() {
   cat <<'EOF'
 
 GitHub checklist (not modified by this command):
-- Secret: OPENAI_API_KEY
-- Variables: AGENT_AUTHORIZED_ACTORS, PIPELINE_ENABLED=true
+- OpenAI: GitHub Actions Workload Identity Provider and exact service-account mapping
+- Variables: OPENAI_WIF_AUDIENCE, OPENAI_IDENTITY_PROVIDER_ID,
+  OPENAI_SERVICE_ACCOUNT_ID, AGENT_AUTHORIZED_ACTORS, PIPELINE_ENABLED=true
 - Variable: AGENT_PIPELINE_ENABLED=true (organization-wide when available,
   otherwise set it separately in every personal-account repository)
 - Optional variables: AGENT_PROTECTED_PATHS and CI_*_COMMAND

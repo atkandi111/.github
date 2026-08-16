@@ -11,6 +11,7 @@ on:
 permissions:
   actions: write
   contents: write
+  id-token: write
   issues: write
   pull-requests: write
 
@@ -28,9 +29,10 @@ jobs:
       issue_body: ${{ github.event.issue.body }}
       trigger_actor: ${{ github.actor }}
       authorized_actors: ${{ vars.AGENT_AUTHORIZED_ACTORS }}
+      openai_wif_audience: ${{ vars.OPENAI_WIF_AUDIENCE }}
+      openai_identity_provider_id: ${{ vars.OPENAI_IDENTITY_PROVIDER_ID }}
+      openai_service_account_id: ${{ vars.OPENAI_SERVICE_ACCOUNT_ID }}
       base_ref: ${{ github.event.repository.default_branch }}
       pipeline_enabled: ${{ vars.PIPELINE_ENABLED }}
       global_pipeline_enabled: ${{ vars.AGENT_PIPELINE_ENABLED }}
       protected_paths: ${{ vars.AGENT_PROTECTED_PATHS }}
-    secrets:
-      openai_api_key: ${{ secrets.OPENAI_API_KEY }}
