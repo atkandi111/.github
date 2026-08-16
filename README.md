@@ -71,10 +71,14 @@ Provider**. Use:
 - Audience: a stable value such as `https://api.openai.com/v1`
 - GitHub OIDC discovery; do not upload private key material.
 
-Map the provider to a dedicated OpenAI project service account with only
-`api.model.read` and `api.model.request`. Match the exact client repository,
-caller `workflow_ref`, and reusable `job_workflow_ref` claims. For a normal
-client, the reusable workflow claim should end in
+Map the provider to a dedicated OpenAI project service account. In the
+dashboard's restricted permissions, set **List models** to **Read** and
+**Model capabilities** to **Request**; leave Assistants, Threads, Files,
+Vector Stores, fine-tuning, and every other resource at **None**. OpenAI
+expands those two controls into granular model and Responses scopes, and the
+workflow rejects any scope set outside that exact allowlist. Match the exact
+client repository, caller `workflow_ref`, and reusable `job_workflow_ref`
+claims. For a normal client, the reusable workflow claim should end in
 `dev-platform/.github/workflows/agent.yml@refs/tags/v1`. Use a separate
 non-production mapping for the canary; it may use a trailing wildcard after the
 same workflow path so exact candidate SHAs can be tested. Do not trust only the

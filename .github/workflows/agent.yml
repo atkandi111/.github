@@ -268,13 +268,27 @@ jobs:
           access_token = exchange.get("access_token", "")
           expires_in = exchange.get("expires_in", 0)
           scopes = set(exchange.get("scope", "").split())
+          expected_scopes = {
+              "api.model.audio.request",
+              "api.model.chat_completions.request",
+              "api.model.embeddings.request",
+              "api.model.images.request",
+              "api.model.moderations.request",
+              "api.model.read",
+              "api.model.realtime.request",
+              "api.model.request",
+              "api.responses.read",
+              "api.responses.write",
+              "model.read",
+              "model.request",
+          }
           if not isinstance(access_token, str) or not access_token or "\n" in access_token or "\r" in access_token:
               raise RuntimeError("OpenAI token exchange did not return a valid access token")
           if exchange.get("token_type") != "Bearer":
               raise RuntimeError("OpenAI token exchange returned an unexpected token type")
           if not isinstance(expires_in, int) or not 0 < expires_in <= 3600:
               raise RuntimeError("OpenAI token exchange returned an invalid token lifetime")
-          if scopes != {"api.model.read", "api.model.request"}:
+          if scopes != expected_scopes:
               returned_scopes = ", ".join(sorted(scopes)) or "(none)"
               raise RuntimeError(
                   f"OpenAI workload mapping returned unexpected scopes: {returned_scopes}"

@@ -27,6 +27,20 @@ CLIENT_AGENTS = (ROOT / "templates/client/AGENTS.md").read_text()
 ISSUE_FORM = (ROOT / "templates/client/.github/ISSUE_TEMPLATE/agent-task.yml").read_text()
 README = (ROOT / "README.md").read_text()
 ALL_WORKFLOWS = "\n".join((AGENT, CI, CLIENT_AGENT, CLIENT_CI))
+EXPECTED_WIF_SCOPES = {
+    "api.model.audio.request",
+    "api.model.chat_completions.request",
+    "api.model.embeddings.request",
+    "api.model.images.request",
+    "api.model.moderations.request",
+    "api.model.read",
+    "api.model.realtime.request",
+    "api.model.request",
+    "api.responses.read",
+    "api.responses.write",
+    "model.read",
+    "model.request",
+}
 
 
 def check(condition: bool, message: str) -> None:
@@ -180,7 +194,7 @@ def run_wif_exchange(
         else {
             "access_token": "openai-access-token",
             "expires_in": 3600,
-            "scope": "api.model.read api.model.request",
+            "scope": " ".join(sorted(EXPECTED_WIF_SCOPES)),
             "token_type": "Bearer",
         },
     ]
