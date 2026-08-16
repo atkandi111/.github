@@ -307,7 +307,7 @@ Required canary cases:
 | Normal UI | Specify a bounded UI change and visual constraints. | Normal implementation, structured PR body, CI pass. |
 | Feature | Specify a straightforward feature and acceptance tests. | Implementation and tests stay in scope; CI passes. |
 | CI failure | Intentionally fail one configured check. | Deterministic CI is red. |
-| Protected path | Request a change to `PROJECT.md` or `.github/workflows/**`. | No agent branch is published; the protected-path gate fails. CI also rejects an equivalent human PR. |
+| Protected path | Request a change to `PROJECT.md` or `.github/workflows/**`. | Codex safe-stops and no agent branch is published; regression tests exercise the publisher gate, including hostile filenames; CI rejects an equivalent human commit. |
 | Underspecified | `Improve the homepage CTA.` | The Issue receives `HUMAN INPUT REQUIRED`; no branch or PR is created. |
 
 Also verify both sides of every guard: authorized and unauthorized actor, each
