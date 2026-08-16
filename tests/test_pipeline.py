@@ -62,7 +62,7 @@ def embedded_python_blocks(yaml_text: str) -> list[str]:
 def run_protected_matcher(code: str, paths: list[str], patterns: str = "") -> int:
     with tempfile.TemporaryDirectory() as directory:
         changed = pathlib.Path(directory) / "changed.txt"
-        changed.write_text("".join(f"{path}\n" for path in paths))
+        changed.write_bytes(b"".join(os.fsencode(path) + b"\0" for path in paths))
         env = os.environ.copy()
         env["CHANGED_FILES"] = str(changed)
         env["PROTECTED_PATHS"] = patterns
@@ -234,12 +234,19 @@ def test_privilege_and_trigger_boundaries() -> None:
     check("codex-version: \"0.147.0\"" in AGENT, "Codex CLI version must be explicit")
     implement = AGENT.split("  implement:", 1)[1].split("  publish:", 1)[0]
     publish = AGENT.split("  publish:", 1)[1]
+    guard = AGENT.split("  guard:", 1)[1].split("  implement:", 1)[0]
     check("openai_api_key:" in AGENT, "central workflow must require its named OpenAI secret")
     check("openai-api-key: ${{ secrets.openai_api_key }}" in implement, "Codex Action must receive the named OpenAI secret")
     check("contents: read" in implement and "contents: write" not in implement, "Codex job must be read-token only")
     check("contents: write" in publish and "actions: write" in publish, "publishing permissions missing")
     check("openai_api_key" not in publish, "OpenAI secret leaked into publishing job")
+    check("contents:" not in guard and "issues: write" in guard, "guard must receive only Issue permission")
     check("gh workflow run ci.yml" in publish, "explicit CI dispatch missing")
+    check('head_sha=$(git rev-parse HEAD)' in publish, "publisher must capture the immutable commit")
+    check('--ref "$BASE_REF"' in publish, "CI dispatch must use the trusted base workflow")
+    check('-f head_ref="$head_sha"' in publish, "CI dispatch must verify the immutable commit")
+    check('-f head_ref="$branch"' not in publish, "CI dispatch must not verify a mutable branch")
+    check("head_ref must be a full lowercase commit SHA" in CI, "CI must reject mutable revision inputs")
     check("--draft" in publish, "PR must be draft")
     check("--input -" in AGENT, "attempt label JSON must be passed as data")
 
@@ -283,12 +290,43 @@ def test_protected_path_code() -> None:
         check(run_protected_matcher(code, ["src/app.ts"]) == 0, "normal path should pass")
         check(run_protected_matcher(code, ["PROJECT.md"]) != 0, "PROJECT.md should be blocked")
         check(run_protected_matcher(code, [".github/workflows/release.yml"]) != 0, "workflow should be blocked")
+        check(
+            run_protected_matcher(code, [".github/workflows/evil\nname.yml"]) != 0,
+            "workflow with a newline in its filename should be blocked",
+        )
+        check(run_protected_matcher(code, ["src/odd\nname.ts"]) == 0, "unprotected newline path should pass")
         check(run_protected_matcher(code, ["infra/main.tf"]) != 0, "Terraform file should be blocked")
         check(run_protected_matcher(code, ["main.tf"]) != 0, "root Terraform file should be blocked")
         custom = "design-system/tokens/**\nsecurity/**"
         check(run_protected_matcher(code, ["design-system/tokens/color.json"], custom) != 0, "custom token path should be blocked")
         check(run_protected_matcher(code, ["src/color.ts"], custom) == 0, "unmatched custom path should pass")
         check(run_protected_matcher(code, ["PROJECT.md"], custom) != 0, "custom paths must not remove defaults")
+    check(AGENT.count("--name-only -z") == 1, "publisher must use NUL-delimited changed paths")
+    check(CI.count("--name-only -z") == 1, "CI must use NUL-delimited changed paths")
+
+
+def test_immutable_revision_guard() -> None:
+    guard = textwrap.dedent(run_blocks(CI)[0])
+    for head_ref, expected in (
+        ("a" * 40, 0),
+        ("issue/7-attempt-2", 1),
+        ("a" * 39, 1),
+        ("A" * 40, 1),
+    ):
+        env = os.environ.copy()
+        env["HEAD_REF"] = head_ref
+        result = subprocess.run(
+            ["bash", "-euo", "pipefail", "-c", guard],
+            env=env,
+            text=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            check=False,
+        )
+        if expected == 0:
+            check(result.returncode == 0, f"full commit SHA should pass: {result.stdout}")
+        else:
+            check(result.returncode != 0, f"mutable or malformed ref should fail: {head_ref!r}")
 
 
 def test_ci_failure_propagation() -> None:
@@ -355,6 +393,20 @@ def test_client_setup() -> None:
             check=False,
         )
         check(collision.returncode != 0, "client install should refuse collisions")
+
+        symlink_client = pathlib.Path(directory) / "symlink-client"
+        symlink_client.mkdir()
+        dangling_target = pathlib.Path(directory) / "must-not-be-created"
+        (symlink_client / "AGENTS.md").symlink_to(dangling_target)
+        symlink_collision = subprocess.run(
+            [str(CLIENT_SETUP), "install", str(symlink_client), "example/dev-platform"],
+            text=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            check=False,
+        )
+        check(symlink_collision.returncode != 0, "client install should refuse dangling symlink collisions")
+        check(not dangling_target.exists(), "client install must not follow a dangling symlink")
 
         incomplete = subprocess.run(
             [str(CLIENT_SETUP), "check", str(target)],
@@ -469,6 +521,7 @@ def main() -> None:
         test_privilege_and_trigger_boundaries,
         test_contracts,
         test_protected_path_code,
+        test_immutable_revision_guard,
         test_ci_failure_propagation,
         test_embedded_shell_syntax,
         test_client_callers_stay_thin,

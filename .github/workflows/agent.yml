@@ -81,7 +81,6 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions:
-      contents: read
       issues: write
     outputs:
       proceed: ${{ steps.guard.outputs.proceed }}
@@ -355,7 +354,7 @@ jobs:
           CHANGED_FILES: ${{ runner.temp }}/changed-files.txt
         run: |
           set -euo pipefail
-          git diff --cached --name-only > "$CHANGED_FILES"
+          git diff --cached --name-only -z > "$CHANGED_FILES"
           python3 - <<'PY'
           import fnmatch
           import os
@@ -376,11 +375,16 @@ jobs:
           extra = os.environ.get("PROTECTED_PATHS", "").strip()
           raw = defaults + (f"\n{extra}" if extra else "")
           patterns = [line.strip() for line in raw.splitlines() if line.strip() and not line.lstrip().startswith("#")]
-          changed = pathlib.Path(os.environ["CHANGED_FILES"]).read_text().splitlines()
+          changed = [
+              os.fsdecode(path)
+              for path in pathlib.Path(os.environ["CHANGED_FILES"]).read_bytes().split(b"\0")
+              if path
+          ]
           blocked = [(path, pattern) for path in changed for pattern in patterns if fnmatch.fnmatchcase(path, pattern)]
           if blocked:
               for path, pattern in blocked:
-                  print(f"::error file={path}::Protected path matched '{pattern}'")
+                  display = path.encode("unicode_escape").decode("ascii")
+                  print(f"::error::Protected path '{display}' matched {pattern!r}")
               sys.exit(1)
           print(f"Protected-path gate passed for {len(changed)} changed file(s).")
           PY
@@ -412,6 +416,7 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git commit -m "chore(issue): implement #$ISSUE_NUMBER (attempt $ATTEMPT)"
+          head_sha=$(git rev-parse HEAD)
           git push origin "HEAD:refs/heads/$branch"
 
           pr_body="$RUNNER_TEMP/pr-body.md"
@@ -429,8 +434,8 @@ jobs:
 
           gh workflow run ci.yml \
             --repo "$GITHUB_REPOSITORY" \
-            --ref "$branch" \
+            --ref "$BASE_REF" \
             -f base_ref="$BASE_REF" \
-            -f head_ref="$branch"
+            -f head_ref="$head_sha"
           echo "Draft PR: $pr_url" >> "$GITHUB_STEP_SUMMARY"
-          echo "Explicitly dispatched ci.yml for $branch." >> "$GITHUB_STEP_SUMMARY"
+          echo "Explicitly dispatched ci.yml for $head_sha." >> "$GITHUB_STEP_SUMMARY"

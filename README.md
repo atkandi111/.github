@@ -239,6 +239,11 @@ Trust boundaries:
 - A clean publishing job without the OpenAI secret validates the patch and
   protected paths before receiving the narrow permissions needed to push a
   branch, create a draft PR, label it, and dispatch CI.
+- Protected-path checks consume NUL-delimited Git output so every legal
+  filename, including names containing newlines, is matched as one path.
+- The publisher dispatches the trusted base-branch CI caller with the exact
+  published commit SHA. CI rejects mutable refs and verifies that checkout
+  resolved to that same commit before running client code.
 - Agent-written code never runs with privileged secrets. `pull_request_target`
   is forbidden.
 - Preview remains client-owned because providers and credentials vary. Preview

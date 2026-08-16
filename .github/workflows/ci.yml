@@ -12,7 +12,7 @@ on:
         required: true
         type: string
       head_ref:
-        description: Branch or SHA to verify.
+        description: Full commit SHA to verify.
         required: true
         type: string
       protected_paths:
@@ -55,6 +55,17 @@ jobs:
     permissions:
       contents: read
     steps:
+      - name: Validate immutable revision input
+        shell: bash
+        env:
+          HEAD_REF: ${{ inputs.head_ref }}
+        run: |
+          set -euo pipefail
+          if [[ ! "$HEAD_REF" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "::error::head_ref must be a full lowercase commit SHA"
+            exit 1
+          fi
+
       # -----------------------------------------------------------------------
       # 3A. SCOPE GATE — compare with the trusted base before running client code.
       # -----------------------------------------------------------------------
@@ -69,6 +80,7 @@ jobs:
         shell: bash
         env:
           BASE_REF: ${{ inputs.base_ref }}
+          HEAD_REF: ${{ inputs.head_ref }}
           PROTECTED_PATHS: ${{ inputs.protected_paths }}
           CHANGED_FILES: ${{ runner.temp }}/changed-files.txt
         run: |
@@ -78,7 +90,11 @@ jobs:
             echo "::error::Base branch is missing from the full checkout: $BASE_REF"
             exit 1
           fi
-          git diff --name-only "origin/$BASE_REF...HEAD" > "$CHANGED_FILES"
+          if [[ $(git rev-parse HEAD) != "$HEAD_REF" ]]; then
+            echo "::error::Checkout does not match the requested immutable commit"
+            exit 1
+          fi
+          git diff --name-only -z "origin/$BASE_REF...HEAD" > "$CHANGED_FILES"
           python3 - <<'PY'
           import fnmatch
           import os
@@ -99,11 +115,16 @@ jobs:
           extra = os.environ.get("PROTECTED_PATHS", "").strip()
           raw = defaults + (f"\n{extra}" if extra else "")
           patterns = [line.strip() for line in raw.splitlines() if line.strip() and not line.lstrip().startswith("#")]
-          changed = pathlib.Path(os.environ["CHANGED_FILES"]).read_text().splitlines()
+          changed = [
+              os.fsdecode(path)
+              for path in pathlib.Path(os.environ["CHANGED_FILES"]).read_bytes().split(b"\0")
+              if path
+          ]
           blocked = [(path, pattern) for path in changed for pattern in patterns if fnmatch.fnmatchcase(path, pattern)]
           if blocked:
               for path, pattern in blocked:
-                  print(f"::error file={path}::Protected path matched '{pattern}'")
+                  display = path.encode("unicode_escape").decode("ascii")
+                  print(f"::error::Protected path '{display}' matched {pattern!r}")
               sys.exit(1)
           print(f"Protected-path gate passed for {len(changed)} changed file(s).")
           PY

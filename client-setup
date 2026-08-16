@@ -69,7 +69,7 @@ install_client() {
 
   local relative collision=false
   for relative in "${client_files[@]}"; do
-    if [[ -e "$target/$relative" ]]; then
+    if [[ -e "$target/$relative" || -L "$target/$relative" ]]; then
       echo "refusing to overwrite: $target/$relative" >&2
       collision=true
     fi
