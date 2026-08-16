@@ -359,6 +359,20 @@ def test_workload_identity_exchange() -> None:
         check(isinstance(error, RuntimeError), f"invalid OpenAI token response must fail: {payload}")
         check(output == "", "invalid OpenAI token response must not emit a credential")
 
+    _, _, _, error = run_wif_exchange(
+        exchange_payload={
+            "access_token": "openai-access-token",
+            "expires_in": 3600,
+            "scope": "api.model.request api.vector_store.read",
+            "token_type": "Bearer",
+        }
+    )
+    check(
+        str(error)
+        == "OpenAI workload mapping returned unexpected scopes: api.model.request, api.vector_store.read",
+        "scope failures must report only the sorted, non-secret scope names",
+    )
+
 
 def test_privilege_and_trigger_boundaries() -> None:
     check("pull_request_target" not in ALL_WORKFLOWS, "privileged pull_request_target is forbidden")

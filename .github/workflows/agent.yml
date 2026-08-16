@@ -275,7 +275,10 @@ jobs:
           if not isinstance(expires_in, int) or not 0 < expires_in <= 3600:
               raise RuntimeError("OpenAI token exchange returned an invalid token lifetime")
           if scopes != {"api.model.read", "api.model.request"}:
-              raise RuntimeError("OpenAI workload mapping must grant only model read and request")
+              returned_scopes = ", ".join(sorted(scopes)) or "(none)"
+              raise RuntimeError(
+                  f"OpenAI workload mapping returned unexpected scopes: {returned_scopes}"
+              )
 
           print(f"::add-mask::{access_token}")
           with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as output:
