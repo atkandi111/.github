@@ -171,6 +171,7 @@ check_client() {
   cat <<'EOF'
 
 GitHub checklist (not modified by this command):
+- OpenAI API billing is active; set a small project budget and usage alerts
 - Secret: OPENAI_API_KEY
 - Variables: AGENT_AUTHORIZED_ACTORS, PIPELINE_ENABLED=true
 - Variable: AGENT_PIPELINE_ENABLED=true (organization-wide when available,

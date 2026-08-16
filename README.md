@@ -30,6 +30,8 @@ after repeated real-world evidence justifies it.
   reusable workflows under **Actions → General → Access**.
 - Repository policy that permits the workflows' declared `GITHUB_TOKEN`
   permissions and allows GitHub Actions to create pull requests.
+- Active OpenAI API billing with a small project budget and usage alerts. A
+  ChatGPT subscription does not fund API calls.
 
 Install the five client files, including the hidden `.github` files, with:
 
@@ -71,7 +73,9 @@ Required secret:
 Use one OpenAI automation project and create a different service account and
 key for each connected repository: canary, Rotary, D'emand, and so on. This is
 one OpenAI project, not one project per repository. Separate keys make one
-client independently revocable and keep usage attributable.
+client independently revocable and keep usage attributable. The project shares
+the organization's one API billing account, so adding repositories does not
+require adding another payment method.
 
 Give each service account only the permissions Codex needs. The current
 restricted-key minimum is **List models: Read** and **Model capabilities:
@@ -86,6 +90,11 @@ Paste the key only at the hidden prompt. Do not put it in a command argument,
 file, repository variable, or organization-wide shared secret. Personal-account
 repositories cannot share an organization Actions secret, but separate keys
 are the safer design regardless.
+
+Before the first canary, confirm **OpenAI Platform → Organization → Billing**
+has a payment method or credits. Keep the project budget deliberately small;
+`Quota exceeded` means authentication reached OpenAI but the API billing balance
+or limit does not permit the model request.
 
 OIDC remains the intended keyless upgrade. It is deferred only by a compatibility
 gate: as of 2026-08-17, GitHub-to-OpenAI token exchange works in the canary, but
