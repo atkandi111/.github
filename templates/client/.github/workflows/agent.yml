@@ -16,12 +16,12 @@ permissions:
 
 # =============================================================================
 # 2. THIN PLATFORM CALL — product context stays in this client repository
-# `main` is the protected, canary-gated release channel for all normal clients.
+# `v1` is the reviewed, canary-gated release channel for all normal clients.
 # =============================================================================
 jobs:
   implement:
     if: github.event.label.name == 'agent'
-    uses: YOUR_ORG/dev-platform/.github/workflows/agent.yml@main
+    uses: YOUR_ORG/dev-platform/.github/workflows/agent.yml@v1
     with:
       issue_number: ${{ github.event.issue.number }}
       issue_title: ${{ github.event.issue.title }}

@@ -24,8 +24,8 @@ after repeated real-world evidence justifies it.
 ### Prerequisites
 
 - A private client repository with a documented build/test contract.
-- A `dev-platform/main` branch treated as a release channel whose changes are
-  canary-tested before merge. Normal clients intentionally follow it.
+- A reviewed `dev-platform` moving `v1` tag that points to a canary-tested,
+  immutable `v1.x.y` release. `main` remains the integration branch.
 - Permission for the client repository to call this private repository's
   reusable workflows under **Actions → General → Access**.
 - Repository policy that permits the workflows' declared `GITHUB_TOKEN`
@@ -37,26 +37,25 @@ Install the five client files, including the hidden `.github` files, with:
 ./client-setup install ../client-repository YOUR_ORG/dev-platform
 ```
 
-The installed callers use `@main`, so every normal client automatically uses
-the latest merged platform workflow on its next run. The command refuses to
+The installed callers use `@v1`, so every normal client automatically uses the
+latest deliberately released V1 workflow on its next run. The command refuses to
 overwrite existing files and never configures GitHub or handles secrets. For
 an existing client contract, merge [`templates/client`](templates/client)
-manually and keep both reusable workflow references on `@main`. Then validate
+manually and keep both reusable workflow references on `@v1`. Then validate
 local readiness with:
 
 ```bash
 ./client-setup check ../client-repository
 ```
 
-This policy deliberately increases the blast radius of a bad platform merge.
-Protecting `main` is the preferred enforcement. While this repository remains
-private on a plan that does not support branch protection, the maintainer has
-explicitly accepted that temporary risk. Every change must still go through a
-pull request, review, exact-SHA canary testing, and the local test suite; direct
-and force pushes to `main` are prohibited by policy, and all available kill
-switches must remain ready. Enable branch protection immediately when the repository
-becomes public or its plan supports it. A dedicated non-client canary is the
-only repository that may temporarily pin a candidate SHA.
+Moving `v1` affects every normal client on its next run, so it is a deliberate
+release action, not an automatic consequence of merging `main`. Every release
+must go through a pull request, review, exact-SHA canary testing, and the local
+test suite. Direct and force pushes to `main` are prohibited by policy, and all
+available kill switches must remain ready. Enable branch protection immediately
+when the repository becomes public or its plan supports it. A dedicated
+non-client canary is the only repository that may temporarily pin a candidate
+SHA.
 
 Complete `PROJECT.md` with confirmed human-owned product direction and
 `AGENTS.md` with the repository map, commands, and engineering conventions.
@@ -109,7 +108,8 @@ automation.
 
 1. A human completes the Agent task Issue form.
 2. An authorized actor reviews the request and adds `agent`.
-3. The workflow records `agent:attempt-N`, runs Codex, and opens a draft PR.
+3. The workflow records `agent:attempt-N`, runs Codex, and opens a draft PR from
+   `issue/<number>-attempt-<number>`.
 4. CI is explicitly dispatched for that branch.
 5. A human uses CI, any client-owned preview, and the structured PR body to
    merge, request changes, or reject the proposal.
@@ -227,8 +227,8 @@ and the [OpenAI Codex GitHub Action](https://learn.chatgpt.com/docs/github-actio
 
 Never test an unproven platform change by merging it to `main`. Work on a
 branch, commit and push the candidate, run `./tests/run.sh`, and review the
-complete diff. Then install or temporarily update a dedicated private,
-credential-free canary repository to the exact candidate commit:
+complete diff. Then install or temporarily update a dedicated private canary
+repository with no production credentials to the exact candidate commit:
 
 ```bash
 candidate_sha=$(git rev-parse HEAD)
@@ -236,9 +236,9 @@ candidate_sha=$(git rev-parse HEAD)
 ./client-setup check-canary ../dev-platform-canary
 ```
 
-For an existing canary, temporarily replace both `@main` workflow references
+For an existing canary, temporarily replace both `@v1` workflow references
 with the same full candidate SHA and run `check-canary`. Normal client
-repositories must remain on `@main`.
+repositories must remain on `@v1`.
 
 Required canary cases:
 
@@ -264,14 +264,19 @@ cases pass:
    repository switch, can stop new runs.
 3. Merge the reviewed candidate into `main` through its pull request. Enforce
    this with branch protection when the repository plan or visibility permits.
-4. All normal clients automatically consume that merged workflow on their next
+4. Pin the canary to the exact merged `main` SHA and confirm the required suite
+   is still green. This matters when the merge strategy creates a new commit.
+5. Create the next immutable release tag, such as `v1.0.0`, at that exact tested
+   SHA. Then deliberately move the compatibility tag `v1` to the same SHA.
+6. Normal clients automatically consume the new `v1` workflow on their next
    run; monitor the first executions closely.
 
 For an incident, set `AGENT_PIPELINE_ENABLED=false` before doing anything else:
 once at organization scope, or in every personal-account client repository.
-Revert the offending `main` commit through the same reviewed workflow, verify
-the restored behavior, then re-enable the pipeline. Do not force-push or
-rewrite `main`.
+Point `v1` back to the previous known-good immutable `v1.x.y` release, verify
+that exact SHA in the canary, and then re-enable the pipeline. Separately revert
+the offending `main` change through the same reviewed workflow. Do not
+force-push or rewrite `main`.
 
 Current external pins, verified 2026-08-13:
 

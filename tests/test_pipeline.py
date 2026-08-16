@@ -18,6 +18,7 @@ AGENT = (ROOT / ".github/workflows/agent.yml").read_text()
 CI = (ROOT / ".github/workflows/ci.yml").read_text()
 CLIENT_AGENT = (ROOT / "templates/client/.github/workflows/agent.yml").read_text()
 CLIENT_CI = (ROOT / "templates/client/.github/workflows/ci.yml").read_text()
+CLIENT_AGENTS = (ROOT / "templates/client/AGENTS.md").read_text()
 ISSUE_FORM = (ROOT / "templates/client/.github/ISSUE_TEMPLATE/agent-task.yml").read_text()
 README = (ROOT / "README.md").read_text()
 ALL_WORKFLOWS = "\n".join((AGENT, CI, CLIENT_AGENT, CLIENT_CI))
@@ -255,6 +256,19 @@ def test_contracts() -> None:
         check(field in ISSUE_FORM, f"Issue form missing {field}")
     check("labels: []" in ISSUE_FORM, "Issue creation must not authorize itself")
     check("Improve the homepage CTA." in README, "ambiguity canary missing")
+    check("Follow KISS" in CLIENT_AGENTS, "client guidance must require the smallest safe implementation")
+    check("avoid speculative abstractions" in CLIENT_AGENTS, "client guidance must reject speculative complexity")
+    check("new runtime dependency" in CLIENT_AGENTS, "client runtime dependency boundary missing")
+    check("report any new development-only dependency" in CLIENT_AGENTS, "development dependency reporting missing")
+    check("<type>/<short-kebab-scope>" in CLIENT_AGENTS, "client branch naming convention missing")
+    check("issue/<number>-attempt-<number>" in CLIENT_AGENTS, "pipeline branch convention missing")
+    check("Do not use author or tool names as prefixes" in CLIENT_AGENTS, "client guidance must reject agent prefixes")
+    check("Conventional Commit subjects" in CLIENT_AGENTS, "client commit convention missing")
+    check('branch="issue/$ISSUE_NUMBER-attempt-$ATTEMPT"' in AGENT, "publisher branch convention missing")
+    check("agent/issue-" not in AGENT, "obsolete agent branch prefix remains")
+    check('git commit -m "chore(issue):' in AGENT, "publisher commit must use a Conventional Commit subject")
+    check("immutable `v1.x.y` release" in README, "immutable release contract missing")
+    check("compatibility tag `v1`" in README, "moving v1 release channel missing")
 
 
 def test_protected_path_code() -> None:
@@ -297,8 +311,8 @@ def test_client_callers_stay_thin() -> None:
     check(len(CLIENT_AGENT.splitlines()) < 45, "agent caller is no longer thin")
     check(len(CLIENT_CI.splitlines()) < 55, "CI caller is no longer thin")
     check("DEV_PLATFORM_VERSION" not in CLIENT_AGENT + CLIENT_CI, "obsolete version placeholder remains")
-    check(CLIENT_AGENT.count("@main") == 1, "agent caller must follow dev-platform main")
-    check(CLIENT_CI.count("@main") == 1, "CI caller must follow dev-platform main")
+    check(CLIENT_AGENT.count("@v1") == 1, "agent caller must follow dev-platform v1")
+    check(CLIENT_CI.count("@v1") == 1, "CI caller must follow dev-platform v1")
 
 
 def test_client_setup() -> None:
@@ -323,8 +337,8 @@ def test_client_setup() -> None:
         ):
             check((target / relative).is_file(), f"client install missed {relative}")
         callers = (target / ".github/workflows/agent.yml").read_text() + (target / ".github/workflows/ci.yml").read_text()
-        check("example/dev-platform/.github/workflows/agent.yml@main" in callers, "agent main reference missing")
-        check("example/dev-platform/.github/workflows/ci.yml@main" in callers, "CI main reference missing")
+        check("example/dev-platform/.github/workflows/agent.yml@v1" in callers, "agent v1 reference missing")
+        check("example/dev-platform/.github/workflows/ci.yml@v1" in callers, "CI v1 reference missing")
 
         collision = subprocess.run(
             [str(CLIENT_SETUP), "install", str(target), "example/dev-platform"],
@@ -371,7 +385,7 @@ def test_client_setup() -> None:
         check(extended.returncode == 0, f"additional client Actions should not confuse reference validation: {extended.stdout}")
 
         original_ci = ci_caller.read_text()
-        ci_caller.write_text(original_ci.replace("@main", "@" + "b" * 40))
+        ci_caller.write_text(original_ci.replace("@v1", "@" + "b" * 40))
         mismatched = subprocess.run(
             [str(CLIENT_SETUP), "check", str(target)],
             text=True,
@@ -379,7 +393,7 @@ def test_client_setup() -> None:
             stderr=subprocess.STDOUT,
             check=False,
         )
-        check(mismatched.returncode != 0, "normal client pinned away from main should fail readiness")
+        check(mismatched.returncode != 0, "normal client pinned away from v1 should fail readiness")
         ci_caller.write_text(original_ci)
 
         canary = pathlib.Path(directory) / "canary"
@@ -416,13 +430,13 @@ def test_client_setup() -> None:
         invalid_canary = pathlib.Path(directory) / "invalid-canary"
         invalid_canary.mkdir()
         invalid = subprocess.run(
-            [str(CLIENT_SETUP), "install-canary", str(invalid_canary), "example/dev-platform", "main"],
+            [str(CLIENT_SETUP), "install-canary", str(invalid_canary), "example/dev-platform", "v1"],
             text=True,
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,
             check=False,
         )
-        check(invalid.returncode != 0, "canary install must reject a mutable main candidate")
+        check(invalid.returncode != 0, "canary install must reject a mutable v1 candidate")
         check(not any(invalid_canary.iterdir()), "rejected canary install should not write files")
 
 
