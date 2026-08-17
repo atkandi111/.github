@@ -67,6 +67,9 @@ and the upstream [Codex proxy credential input](https://github.com/openai/codex/
 - The separate publishing job has narrow GitHub write permissions for its whole
   job, but validates the patch and protected paths before using them to push,
   create a draft PR, label it, or dispatch CI. It has no OpenAI credential.
+- Deterministic client commands run with `contents: read` only. Separate pending
+  and final status jobs use clean runners with `statuses: write`; they never
+  check out code, consume artifacts or client outputs, or execute client commands.
 - Agent-written code never runs with privileged secrets. `pull_request_target`
   and blanket secret inheritance are forbidden.
 - Production credentials, shared infrastructure, IAM, DNS, and deployment stay
@@ -99,9 +102,11 @@ path gate guarantees the agent patch did not modify that caller. The publisher
 also passes the full commit SHA as data; reusable CI rejects mutable refs,
 checks out that SHA, verifies `HEAD`, compares it with the requested base, and
 only then runs client commands. Because GitHub does not include a
-`workflow_dispatch` run in the PR check rollup, CI posts the fixed
-`dev-platform/deterministic-ci` commit status on that same SHA, making the exact
-result visible on the PR and available to branch protection.
+`workflow_dispatch` run in the PR check rollup, isolated clean-runner jobs post
+the fixed `dev-platform/deterministic-ci` commit status on that same SHA. The
+final writer reads only GitHub's trusted verification-job result, so client code
+cannot forge the status through `GITHUB_ENV`, `GITHUB_PATH`, `BASH_ENV`, a fake
+`gh`, artifacts, or job outputs.
 
 Ordinary human PRs run through `pull_request`. Opening, synchronizing,
 reopening, or editing a PR triggers verification, so changing its base cannot

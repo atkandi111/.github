@@ -46,14 +46,13 @@ concurrency:
 
 jobs:
   # ===========================================================================
-  # 3. VERIFY — read-only checkout, policy gate, then deterministic commands
+  # 3. PENDING STATUS — isolated writer with no checkout or client code
   # ===========================================================================
-  verify:
-    name: Deterministic CI
+  status_pending:
+    name: Report pending PR-head status
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 5
     permissions:
-      contents: read
       statuses: write
     steps:
       - name: Validate immutable revision input
@@ -67,7 +66,7 @@ jobs:
             exit 1
           fi
 
-      - name: Report pending PR-head status
+      - name: Publish pending status
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
@@ -81,8 +80,30 @@ jobs:
             -f description='Deterministic CI is running' \
             -f target_url="$run_url" >/dev/null
 
+  # ===========================================================================
+  # 4. VERIFY — read-only checkout, policy gate, then untrusted client commands
+  # ===========================================================================
+  verify:
+    name: Deterministic CI
+    needs: status_pending
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    steps:
+      - name: Validate immutable revision input
+        shell: bash
+        env:
+          HEAD_REF: ${{ inputs.head_ref }}
+        run: |
+          set -euo pipefail
+          if [[ ! "$HEAD_REF" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "::error::head_ref must be a full lowercase commit SHA"
+            exit 1
+          fi
+
       # -----------------------------------------------------------------------
-      # 3A. SCOPE GATE — compare with the trusted base before running client code.
+      # 4A. SCOPE GATE — compare with the trusted base before running client code.
       # -----------------------------------------------------------------------
       - name: Check out proposed revision
         uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
@@ -149,7 +170,7 @@ jobs:
           PY
 
       # -----------------------------------------------------------------------
-      # 3B. CLIENT COMMAND CONTRACT — build, test, lint, and typecheck in order.
+      # 4B. CLIENT COMMAND CONTRACT — build, test, lint, and typecheck in order.
       # -----------------------------------------------------------------------
       - name: Build
         if: inputs.build_command != ''
@@ -180,7 +201,7 @@ jobs:
         run: bash -euo pipefail -c "$CI_COMMAND"
 
       # -----------------------------------------------------------------------
-      # 3C. SUMMARY — make every configured or intentionally omitted check clear.
+      # 4C. SUMMARY — make every configured or intentionally omitted check clear.
       # -----------------------------------------------------------------------
       - name: Report omitted checks
         shell: bash
@@ -200,17 +221,39 @@ jobs:
             fi
           done
 
-      - name: Report final PR-head status
-        if: always()
+  # ===========================================================================
+  # 5. FINAL STATUS — clean runner trusts only GitHub's verification result
+  # ===========================================================================
+  status_final:
+    name: Report final PR-head status
+    needs: [status_pending, verify]
+    if: always() && needs.status_pending.result == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      statuses: write
+    steps:
+      - name: Validate immutable revision input
+        shell: bash
+        env:
+          HEAD_REF: ${{ inputs.head_ref }}
+        run: |
+          set -euo pipefail
+          if [[ ! "$HEAD_REF" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "::error::head_ref must be a full lowercase commit SHA"
+            exit 1
+          fi
+
+      - name: Publish final status
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
           HEAD_REF: ${{ inputs.head_ref }}
-          JOB_STATUS: ${{ job.status }}
+          VERIFY_RESULT: ${{ needs.verify.result }}
         run: |
           set -euo pipefail
           run_url="$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
-          case "$JOB_STATUS" in
+          case "$VERIFY_RESULT" in
             success)
               state=success
               description='Deterministic CI passed'

@@ -229,7 +229,6 @@ def test_privilege_and_trigger_boundaries() -> None:
     check("secrets: inherit" not in ALL_WORKFLOWS, "blanket secret inheritance is forbidden")
     check("persist-credentials: false" in CI, "CI checkout credentials must not persist")
     check("fetch-depth: 0" in CI, "CI must fetch history needed for the protected-path comparison")
-    check("statuses: write" in CI, "reusable CI must be able to report the exact PR-head status")
     check("statuses: write" in CLIENT_CI, "client CI caller must grant exact-head status permission")
     check("git fetch" not in CI, "CI must not fetch after checkout removes credentials")
     check("git show-ref --verify --quiet" in CI, "CI must verify the fetched base branch exists")
@@ -255,9 +254,39 @@ def test_privilege_and_trigger_boundaries() -> None:
     check("types: [opened, synchronize, reopened, edited]" in CLIENT_CI, "CI must rerun when a PR base is edited")
     check(CI.count("statuses/$HEAD_REF") == 2, "CI must publish pending and final statuses on the exact head")
     check("dev-platform/deterministic-ci" in CI, "stable PR-head status context missing")
-    check("if: always()" in CI and "JOB_STATUS: ${{ job.status }}" in CI, "final PR-head status must run after failures")
     check("--draft" in publish, "PR must be draft")
     check("--input -" in AGENT, "attempt label JSON must be passed as data")
+
+
+def test_status_writer_job_isolation() -> None:
+    pending = CI.split("  status_pending:", 1)[1].split("\n  verify:", 1)[0]
+    verify = CI.split("  verify:", 1)[1].split("\n  status_final:", 1)[0]
+    final = CI.split("  status_final:", 1)[1]
+
+    check("statuses: write" in pending and "statuses: write" in final, "isolated status writers need status permission")
+    check("contents: read" in verify and "statuses: write" not in verify, "client verification must be read-only")
+    check("GH_TOKEN" not in verify, "client commands must not share a job with an exposed GitHub token")
+    check("statuses/$HEAD_REF" not in verify, "client verification must not publish authoritative statuses")
+
+    untrusted_markers = (
+        "actions/checkout@",
+        "CI_COMMAND",
+        "inputs.build_command",
+        "inputs.test_command",
+        "inputs.lint_command",
+        "inputs.typecheck_command",
+        "actions/download-artifact@",
+    )
+    for name, writer in (("pending", pending), ("final", final)):
+        for marker in untrusted_markers:
+            check(marker not in writer, f"{name} status writer must not consume untrusted repository state: {marker}")
+
+    check("needs: status_pending" in verify, "verification must follow the isolated pending writer")
+    check("needs: [status_pending, verify]" in final, "final writer must wait for verification")
+    check("VERIFY_RESULT: ${{ needs.verify.result }}" in final, "final status must trust only GitHub's job result")
+    check("needs.verify.outputs" not in final, "final status must not trust client-controlled outputs")
+    check("if: always()" in final, "final status must report failed verification")
+    check(CI.count("statuses: write") == 2, "only the two isolated writer jobs may publish statuses")
 
 
 def test_contracts() -> None:
@@ -545,6 +574,7 @@ def main() -> None:
         test_guard_contract,
         test_guard_behavior,
         test_privilege_and_trigger_boundaries,
+        test_status_writer_job_isolation,
         test_contracts,
         test_protected_path_code,
         test_immutable_revision_guard,

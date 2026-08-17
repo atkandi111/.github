@@ -21,9 +21,11 @@ flowchart LR
         Guard["Authorize"]
         Codex["Codex implements"]
         Publish["Validate + publish"]
+        Pending["Post pending status"]
         Checkout["Checkout exact commit"]
         Paths["Check protected paths"]
         Checks["Run client commands"]
+        Final["Post final status"]
     end
 
     Label --> AgentCaller --> Guard --> Codex --> Publish
@@ -31,9 +33,9 @@ flowchart LR
     Publish --> PR
     Publish -- "dispatch exact PR-head SHA" --> CICaller
     PR -. "human PR event" .-> CICaller
-    CICaller --> Checkout --> Paths --> Checks
+    CICaller --> Pending --> Checkout --> Paths --> Checks --> Final
     Commands -.-> Checks
-    Checks --> Review["Human review"]
+    Final --> Review["Human review"]
     Review --> Decision["Merge, revise, or reject"]
 ```
 
@@ -78,7 +80,7 @@ protected paths, permissions, and the future OIDC migration.
 ## Use it
 
 1. Complete the Agent task Issue form.
-2. Review the request, then add `agent` as an authorized user.
+2. Review the request, then have an authorized user add `agent`.
 3. The pipeline records an attempt, runs Codex, and opens an
    `issue/<number>-attempt-<number>` draft PR.
 4. CI appears on the PR and verifies its exact immutable commit.
@@ -110,6 +112,7 @@ Cancel active runs separately. Rotate `OPENAI_API_KEY` if exposure is suspected.
 - Infrastructure, workflow, project-context, and Terraform paths are protected
   before publication and again in CI.
 - CI checks out the exact requested commit before running client-owned commands.
+- Status-writing jobs use clean runners and never check out or execute client code.
 - Merging and production delivery remain human-owned.
 
 ## Maintain and release
