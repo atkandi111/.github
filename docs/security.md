@@ -94,11 +94,14 @@ are blocked as well as their descendants.
 ## Exact-commit CI
 
 The publisher dispatches the unchanged client `ci.yml` caller on the newly
-published agent branch, so GitHub attaches the run to the PR head. The protected
+published agent branch, so the run records the PR branch and head. The protected
 path gate guarantees the agent patch did not modify that caller. The publisher
 also passes the full commit SHA as data; reusable CI rejects mutable refs,
 checks out that SHA, verifies `HEAD`, compares it with the requested base, and
-only then runs client commands.
+only then runs client commands. Because GitHub does not include a
+`workflow_dispatch` run in the PR check rollup, CI posts the fixed
+`dev-platform/deterministic-ci` commit status on that same SHA, making the exact
+result visible on the PR and available to branch protection.
 
 Ordinary human PRs run through `pull_request`. Opening, synchronizing,
 reopening, or editing a PR triggers verification, so changing its base cannot

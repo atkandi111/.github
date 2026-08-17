@@ -19,6 +19,7 @@ on:
 
 permissions:
   contents: read
+  statuses: write
 
 # =============================================================================
 # 2. THIN PLATFORM CALL — pass only refs, protected paths, and native commands

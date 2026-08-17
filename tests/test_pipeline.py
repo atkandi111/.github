@@ -229,6 +229,8 @@ def test_privilege_and_trigger_boundaries() -> None:
     check("secrets: inherit" not in ALL_WORKFLOWS, "blanket secret inheritance is forbidden")
     check("persist-credentials: false" in CI, "CI checkout credentials must not persist")
     check("fetch-depth: 0" in CI, "CI must fetch history needed for the protected-path comparison")
+    check("statuses: write" in CI, "reusable CI must be able to report the exact PR-head status")
+    check("statuses: write" in CLIENT_CI, "client CI caller must grant exact-head status permission")
     check("git fetch" not in CI, "CI must not fetch after checkout removes credentials")
     check("git show-ref --verify --quiet" in CI, "CI must verify the fetched base branch exists")
     check("permission-profile: \":workspace\"" in AGENT, "Codex workspace permission profile missing")
@@ -251,6 +253,9 @@ def test_privilege_and_trigger_boundaries() -> None:
     check('-f head_ref="$branch"' not in publish, "CI dispatch must not verify a mutable branch")
     check("head_ref must be a full lowercase commit SHA" in CI, "CI must reject mutable revision inputs")
     check("types: [opened, synchronize, reopened, edited]" in CLIENT_CI, "CI must rerun when a PR base is edited")
+    check(CI.count("statuses/$HEAD_REF") == 2, "CI must publish pending and final statuses on the exact head")
+    check("dev-platform/deterministic-ci" in CI, "stable PR-head status context missing")
+    check("if: always()" in CI and "JOB_STATUS: ${{ job.status }}" in CI, "final PR-head status must run after failures")
     check("--draft" in publish, "PR must be draft")
     check("--input -" in AGENT, "attempt label JSON must be passed as data")
 
