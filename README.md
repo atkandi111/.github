@@ -1,45 +1,129 @@
 # dev-platform
 
-`dev-platform` is the centralized, deliberately small Internal Developer Platform for isolated client website repositories. V1 turns an explicitly authorized GitHub Issue into a reviewable Codex implementation; it does not own infrastructure or product decisions.
+`dev-platform` is a small, reusable implementation pipeline for private client
+repositories. An authorized GitHub Issue becomes a Codex-generated draft pull
+request; deterministic checks and the final decision stay human-owned.
 
-## V1 flow
+```mermaid
+flowchart LR
+    User["User"] --> Issue["GitHub Issue"]
 
-```text
-human Issue + agent label
-→ trigger, actor, kill-switch, attempt, and concurrency guards
-→ fresh Codex implementation run
-→ isolated branch and draft PR
-→ deterministic client commands and protected-path gate
-→ optional client-owned preview
-→ human merge, changes, or rejection
+    subgraph Client["Client repository"]
+        Issue --> Label["Add agent label"]
+        AgentCaller["agent.yml caller"]
+        Context["PROJECT.md + AGENTS.md"]
+        PR["Draft PR"]
+        CICaller["ci.yml caller"]
+        Commands["Build + test + lint"]
+    end
+
+    subgraph Platform["dev-platform"]
+        Guard["Authorize"]
+        Codex["Codex implements"]
+        Publish["Validate + publish"]
+        Pending["Post pending status"]
+        Checkout["Checkout exact commit"]
+        Paths["Check protected paths"]
+        Checks["Run client commands"]
+        Final["Post final status"]
+    end
+
+    Label --> AgentCaller --> Guard --> Codex --> Publish
+    Context -.-> Codex
+    Publish --> PR
+    Publish -- "dispatch exact PR-head SHA" --> CICaller
+    PR -. "human PR event" .-> CICaller
+    CICaller --> Pending --> Checkout --> Paths --> Checks --> Final
+    Commands -.-> Checks
+    Final --> Review["Human review"]
+    Review --> Decision["Merge, revise, or reject"]
 ```
 
-Codex stops with `HUMAN INPUT REQUIRED` when a meaningful product or user-visible decision is missing. There is no planner, AI reviewer, auto-merge, production deployment, or Terraform access.
+V1 intentionally has no planning agent, AI reviewer, auto-merge, production
+deployment, Terraform access, model routing, or orchestration service.
 
-## Connect a repository
+## Connect a client repository
 
-1. Copy the contents of [`templates/client`](templates/client) into the client repository.
-2. Pin both reusable workflow callers to a canary-tested `dev-platform` tag or commit; never track `main`.
-3. Add the `agent` label and the variables/secrets listed in [`docs/operations.md`](docs/operations.md).
-4. Ensure the repository exposes the applicable build, test, lint, and typecheck commands through repository variables.
-5. Configure protected paths and, if supported, a separate limited-credential preview job.
+Prerequisites:
 
-Create an Issue with the agent task template, then have an authorized actor add `agent`. Remove the label before editing and re-add it to authorize another attempt.
+- a private client repository with known build, test, lint, and typecheck commands;
+- permission for that repository to call this private repository's workflows;
+- GitHub Actions permission to create pull requests; and
+- active OpenAI API billing with a small budget and usage alerts.
 
-## Stop the pipeline
+Install the five client files:
 
-- Repository: set `PIPELINE_ENABLED=false`.
-- Organization: set `AGENT_PIPELINE_ENABLED=false` as an organization Actions variable.
-- Emergency fallback: disable the client repository's **Agent implementation** workflow in GitHub Actions.
+```bash
+./client-setup install ../client-repository YOUR_ORG/dev-platform
+```
 
-Existing runs can be cancelled from the Actions UI. Provider budget and usage alerts are a required operational control, not a custom service in this repository.
+Then:
+
+1. Replace the guidance in `PROJECT.md` and `AGENTS.md` with confirmed project
+   context and commands.
+2. Run `./client-setup check ../client-repository`.
+3. Create the `agent` label.
+4. Add the `OPENAI_API_KEY` repository secret.
+5. Set `AGENT_AUTHORIZED_ACTORS`, `PIPELINE_ENABLED=true`, and
+   `AGENT_PIPELINE_ENABLED=true`.
+6. Set the applicable `CI_BUILD_COMMAND`, `CI_TEST_COMMAND`,
+   `CI_LINT_COMMAND`, and `CI_TYPECHECK_COMMAND` variables.
+
+The installed callers use `@main`. `main` is the client release channel, so a
+platform change must pass review and exact-SHA canary testing before merge.
+The installer refuses existing files and symlinked destination directories; it
+never configures GitHub or handles secrets.
+
+See [Security and authentication](docs/security.md) for API-key isolation,
+protected paths, permissions, and the future OIDC migration.
+
+## Use it
+
+1. Complete the Agent task Issue form.
+2. Review the request, then have an authorized user add `agent`.
+3. The pipeline records an attempt, runs Codex, and opens an
+   `issue/<number>-attempt-<number>` draft PR.
+4. CI appears on the PR and verifies its exact immutable commit.
+5. Review the diff, CI, and any client-owned preview; merge, revise, or reject.
+
+Remove and re-add `agent` to authorize another attempt. Attempts are serialized
+per Issue, limited to three by default, and have finite timeouts.
+
+When meaningful product or user-visible intent is missing, Codex comments
+`HUMAN INPUT REQUIRED` with one question and creates no branch.
+
+## Stop it
+
+- One repository: set `PIPELINE_ENABLED=false`.
+- Organization-owned portfolio: set `AGENT_PIPELINE_ENABLED=false` once at the
+  organization level.
+- Personal-account portfolio: set `AGENT_PIPELINE_ENABLED=false` in every
+  connected repository.
+- Emergency fallback: disable **Agent implementation** in GitHub Actions.
+
+Cancel active runs separately. Rotate `OPENAI_API_KEY` if exposure is suspected.
 
 ## Safety boundaries
 
-The Codex job has repository read permission, a workspace-only permission profile, and an OpenAI credential brokered by the official Action. A separate job, without the OpenAI secret, validates and publishes the patch. Protected paths fail before push and again in CI. Issue content is passed as action data, never embedded in executable shell. Production credentials and shared infrastructure are outside this pipeline.
+- Issue and PR text is untrusted data and is never inserted into shell source.
+- Codex has repository-read access, no write token, and no production credential.
+- A separate publishing job validates the patch before using its narrow write
+  permissions to create a branch and draft PR.
+- Infrastructure, workflow, project-context, and Terraform paths are protected
+  before publication and again in CI.
+- CI checks out the exact requested commit before running client-owned commands.
+- Status-writing jobs use clean runners and never check out or execute client code.
+- Merging and production delivery remain human-owned.
 
-See [`docs/architecture.md`](docs/architecture.md) for boundaries, [`docs/operations.md`](docs/operations.md) for setup and incidents, and [`docs/canary.md`](docs/canary.md) for rollout validation.
+## Maintain and release
 
-## Test a platform change
+Before considering a platform change complete:
 
-Run `./tests/run.sh`, review the diff, test all six scenarios in the non-client canary, tag the tested commit, and roll it to one or two clients before broader adoption.
+```bash
+./tests/run.sh
+git diff --check
+```
+
+Then canary-test the exact candidate SHA before merging it to `main`. See
+[Canary and release](docs/release.md) for the required cases, evidence, pins,
+release steps, and rollback.

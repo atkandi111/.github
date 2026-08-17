@@ -1,8 +1,11 @@
 name: Client CI
 
+# =============================================================================
+# 1. VERIFICATION EVENTS — normal PR checks plus explicit agent-branch dispatch
+# =============================================================================
 on:
   pull_request:
-    types: [opened, synchronize, reopened]
+    types: [opened, synchronize, reopened, edited]
   workflow_dispatch:
     inputs:
       base_ref:
@@ -10,16 +13,20 @@ on:
         required: true
         type: string
       head_ref:
-        description: Branch or SHA to verify.
+        description: Full commit SHA to verify.
         required: true
         type: string
 
 permissions:
   contents: read
+  statuses: write
 
+# =============================================================================
+# 2. THIN PLATFORM CALL — pass only refs, protected paths, and native commands
+# =============================================================================
 jobs:
   verify:
-    uses: YOUR_ORG/dev-platform/.github/workflows/ci.yml@DEV_PLATFORM_VERSION
+    uses: YOUR_ORG/dev-platform/.github/workflows/ci.yml@main
     with:
       base_ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.ref || inputs.base_ref }}
       head_ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || inputs.head_ref }}
@@ -29,7 +36,8 @@ jobs:
       lint_command: ${{ vars.CI_LINT_COMMAND }}
       typecheck_command: ${{ vars.CI_TYPECHECK_COMMAND }}
 
-  # Add a client-owned preview job here when the hosting provider supports one.
-  # It should need `verify`, deploy the exact head SHA, and use only a limited
-  # non-production GitHub Environment. Do not pass preview secrets to `verify`.
-
+  # ===========================================================================
+  # 3. CLIENT EXTENSION POINT — optional non-production preview
+  # Add a provider-specific job here only when supported. It must need `verify`,
+  # deploy the exact head SHA, and keep preview secrets out of `verify`.
+  # ===========================================================================

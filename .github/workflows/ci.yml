@@ -1,5 +1,9 @@
 name: Reusable deterministic CI
 
+# =============================================================================
+# 1. CALL CONTRACT — revision, comparison base, and client-native commands
+# Empty commands are intentional skips; this workflow adds no stack opinion.
+# =============================================================================
 on:
   workflow_call:
     inputs:
@@ -8,7 +12,7 @@ on:
         required: true
         type: string
       head_ref:
-        description: Branch or SHA to verify.
+        description: Full commit SHA to verify.
         required: true
         type: string
       protected_paths:
@@ -33,18 +37,74 @@ on:
         default: ""
         type: string
 
+# =============================================================================
+# 2. REVISION RUN ISOLATION — keep only the newest run for one proposed revision
+# =============================================================================
 concurrency:
   group: ci-${{ github.repository }}-${{ inputs.head_ref }}
   cancel-in-progress: true
 
 jobs:
+  # ===========================================================================
+  # 3. PENDING STATUS — isolated writer with no checkout or client code
+  # ===========================================================================
+  status_pending:
+    name: Report pending PR-head status
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      statuses: write
+    steps:
+      - name: Validate immutable revision input
+        shell: bash
+        env:
+          HEAD_REF: ${{ inputs.head_ref }}
+        run: |
+          set -euo pipefail
+          if [[ ! "$HEAD_REF" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "::error::head_ref must be a full lowercase commit SHA"
+            exit 1
+          fi
+
+      - name: Publish pending status
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          HEAD_REF: ${{ inputs.head_ref }}
+        run: |
+          set -euo pipefail
+          run_url="$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
+          gh api --method POST "repos/$GITHUB_REPOSITORY/statuses/$HEAD_REF" \
+            -f state=pending \
+            -f context=dev-platform/deterministic-ci \
+            -f description='Deterministic CI is running' \
+            -f target_url="$run_url" >/dev/null
+
+  # ===========================================================================
+  # 4. VERIFY — read-only checkout, policy gate, then untrusted client commands
+  # ===========================================================================
   verify:
     name: Deterministic CI
+    needs: status_pending
     runs-on: ubuntu-latest
     timeout-minutes: 30
     permissions:
       contents: read
     steps:
+      - name: Validate immutable revision input
+        shell: bash
+        env:
+          HEAD_REF: ${{ inputs.head_ref }}
+        run: |
+          set -euo pipefail
+          if [[ ! "$HEAD_REF" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "::error::head_ref must be a full lowercase commit SHA"
+            exit 1
+          fi
+
+      # -----------------------------------------------------------------------
+      # 4A. SCOPE GATE — compare with the trusted base before running client code.
+      # -----------------------------------------------------------------------
       - name: Check out proposed revision
         uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
         with:
@@ -56,13 +116,21 @@ jobs:
         shell: bash
         env:
           BASE_REF: ${{ inputs.base_ref }}
+          HEAD_REF: ${{ inputs.head_ref }}
           PROTECTED_PATHS: ${{ inputs.protected_paths }}
           CHANGED_FILES: ${{ runner.temp }}/changed-files.txt
         run: |
           set -euo pipefail
           git check-ref-format "refs/heads/$BASE_REF" >/dev/null
-          git fetch --no-tags origin "+refs/heads/$BASE_REF:refs/remotes/origin/$BASE_REF"
-          git diff --name-only "origin/$BASE_REF...HEAD" > "$CHANGED_FILES"
+          if ! git show-ref --verify --quiet "refs/remotes/origin/$BASE_REF"; then
+            echo "::error::Base branch is missing from the full checkout: $BASE_REF"
+            exit 1
+          fi
+          if [[ $(git rev-parse HEAD) != "$HEAD_REF" ]]; then
+            echo "::error::Checkout does not match the requested immutable commit"
+            exit 1
+          fi
+          git diff --name-only -z "origin/$BASE_REF...HEAD" > "$CHANGED_FILES"
           python3 - <<'PY'
           import fnmatch
           import os
@@ -72,9 +140,13 @@ jobs:
           defaults = """PROJECT.md
           AGENTS.md
           **/AGENTS.md
+          .github/workflows
           .github/workflows/**
+          .github/actions
           .github/actions/**
+          infrastructure
           infrastructure/**
+          terraform
           terraform/**
           *.tf
           **/*.tf
@@ -83,15 +155,23 @@ jobs:
           extra = os.environ.get("PROTECTED_PATHS", "").strip()
           raw = defaults + (f"\n{extra}" if extra else "")
           patterns = [line.strip() for line in raw.splitlines() if line.strip() and not line.lstrip().startswith("#")]
-          changed = pathlib.Path(os.environ["CHANGED_FILES"]).read_text().splitlines()
+          changed = [
+              os.fsdecode(path)
+              for path in pathlib.Path(os.environ["CHANGED_FILES"]).read_bytes().split(b"\0")
+              if path
+          ]
           blocked = [(path, pattern) for path in changed for pattern in patterns if fnmatch.fnmatchcase(path, pattern)]
           if blocked:
               for path, pattern in blocked:
-                  print(f"::error file={path}::Protected path matched '{pattern}'")
+                  display = path.encode("unicode_escape").decode("ascii")
+                  print(f"::error::Protected path '{display}' matched {pattern!r}")
               sys.exit(1)
           print(f"Protected-path gate passed for {len(changed)} changed file(s).")
           PY
 
+      # -----------------------------------------------------------------------
+      # 4B. CLIENT COMMAND CONTRACT — build, test, lint, and typecheck in order.
+      # -----------------------------------------------------------------------
       - name: Build
         if: inputs.build_command != ''
         shell: bash
@@ -120,6 +200,9 @@ jobs:
           CI_COMMAND: ${{ inputs.typecheck_command }}
         run: bash -euo pipefail -c "$CI_COMMAND"
 
+      # -----------------------------------------------------------------------
+      # 4C. SUMMARY — make every configured or intentionally omitted check clear.
+      # -----------------------------------------------------------------------
       - name: Report omitted checks
         shell: bash
         env:
@@ -137,3 +220,55 @@ jobs:
               echo "$name: configured" >> "$GITHUB_STEP_SUMMARY"
             fi
           done
+
+  # ===========================================================================
+  # 5. FINAL STATUS — clean runner trusts only GitHub's verification result
+  # ===========================================================================
+  status_final:
+    name: Report final PR-head status
+    needs: [status_pending, verify]
+    if: always() && needs.status_pending.result == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      statuses: write
+    steps:
+      - name: Validate immutable revision input
+        shell: bash
+        env:
+          HEAD_REF: ${{ inputs.head_ref }}
+        run: |
+          set -euo pipefail
+          if [[ ! "$HEAD_REF" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "::error::head_ref must be a full lowercase commit SHA"
+            exit 1
+          fi
+
+      - name: Publish final status
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          HEAD_REF: ${{ inputs.head_ref }}
+          VERIFY_RESULT: ${{ needs.verify.result }}
+        run: |
+          set -euo pipefail
+          run_url="$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
+          case "$VERIFY_RESULT" in
+            success)
+              state=success
+              description='Deterministic CI passed'
+              ;;
+            failure)
+              state=failure
+              description='Deterministic CI failed'
+              ;;
+            *)
+              state=error
+              description='Deterministic CI did not complete'
+              ;;
+          esac
+          gh api --method POST "repos/$GITHUB_REPOSITORY/statuses/$HEAD_REF" \
+            -f state="$state" \
+            -f context=dev-platform/deterministic-ci \
+            -f description="$description" \
+            -f target_url="$run_url" >/dev/null

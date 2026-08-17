@@ -1,0 +1,243 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+platform_root=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
+template_root="$platform_root/templates/client"
+
+client_files=(
+  AGENTS.md
+  PROJECT.md
+  .github/ISSUE_TEMPLATE/agent-task.yml
+  .github/workflows/agent.yml
+  .github/workflows/ci.yml
+)
+
+usage() {
+  cat <<'EOF'
+usage:
+  ./client-setup install TARGET OWNER/REPOSITORY
+  ./client-setup check TARGET
+  ./client-setup install-canary TARGET OWNER/REPOSITORY COMMIT_SHA
+  ./client-setup check-canary TARGET
+
+Normal clients follow the reviewed dev-platform main release channel automatically.
+The canary-only commands accept a full 40-character candidate commit SHA so a
+platform change can be tested before it reaches main. The installer never
+overwrites an existing file or configures GitHub settings and secrets.
+EOF
+}
+
+absolute_directory() {
+  local directory=$1
+  if [[ ! -d $directory ]]; then
+    echo "directory not found: $directory" >&2
+    return 1
+  fi
+  (cd "$directory" && pwd -P)
+}
+
+validate_destination_parent() {
+  local target=$1
+  local relative=$2
+  local parent current part
+  local -a parts
+
+  parent=$(dirname "$relative")
+  if [[ $parent == . ]]; then
+    return 0
+  fi
+
+  current=$target
+  IFS=/ read -r -a parts <<< "$parent"
+  for part in "${parts[@]}"; do
+    current="$current/$part"
+    if [[ -L $current ]]; then
+      echo "refusing symlinked destination directory: $current" >&2
+      return 1
+    fi
+    if [[ -e $current && ! -d $current ]]; then
+      echo "destination parent is not a directory: $current" >&2
+      return 1
+    fi
+  done
+}
+
+install_client() {
+  local mode=$1
+  shift
+  local expected_arguments=2
+  if [[ $mode == canary ]]; then
+    expected_arguments=3
+  fi
+  if [[ $# -ne $expected_arguments ]]; then
+    usage >&2
+    return 64
+  fi
+
+  local target platform_repository version check_command
+  target=$(absolute_directory "$1")
+  platform_repository=$2
+  version=main
+  check_command=check
+  if [[ $mode == canary ]]; then
+    version=$3
+    check_command=check-canary
+  fi
+
+  if [[ ! $platform_repository =~ ^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$ ]]; then
+    echo "invalid platform repository: expected OWNER/REPOSITORY" >&2
+    return 64
+  fi
+  if [[ $mode == canary && ! $version =~ ^[0-9a-f]{40}$ ]]; then
+    echo "invalid canary version: use a full 40-character candidate commit SHA" >&2
+    return 64
+  fi
+
+  local relative collision=false
+  for relative in "${client_files[@]}"; do
+    if ! validate_destination_parent "$target" "$relative"; then
+      collision=true
+    fi
+    if [[ -e "$target/$relative" || -L "$target/$relative" ]]; then
+      echo "refusing to overwrite: $target/$relative" >&2
+      collision=true
+    fi
+  done
+  if [[ $collision == true ]]; then
+    echo "No files were installed. Merge existing files manually." >&2
+    return 1
+  fi
+
+  for relative in "${client_files[@]}"; do
+    mkdir -p "$(dirname "$target/$relative")"
+    if [[ $mode == canary ]]; then
+      sed \
+        -e "s|YOUR_ORG/dev-platform|$platform_repository|g" \
+        -e "s|@main|@$version|g" \
+        "$template_root/$relative" > "$target/$relative"
+    else
+      sed \
+        -e "s|YOUR_ORG/dev-platform|$platform_repository|g" \
+        "$template_root/$relative" > "$target/$relative"
+    fi
+  done
+
+  cat <<EOF
+Installed ${#client_files[@]} client files in $target.
+
+Next:
+1. Replace the guidance in PROJECT.md and AGENTS.md.
+2. Run: $platform_root/client-setup $check_command "$target"
+3. Configure the GitHub values printed by that check.
+EOF
+}
+
+check_client() {
+  local mode=$1
+  shift
+  if [[ $# -ne 1 ]]; then
+    usage >&2
+    return 64
+  fi
+
+  local target relative failed=false
+  target=$(absolute_directory "$1")
+
+  for relative in "${client_files[@]}"; do
+    if [[ ! -f "$target/$relative" ]]; then
+      echo "missing: $relative" >&2
+      failed=true
+    fi
+  done
+
+  if [[ $failed == false ]]; then
+    if grep -En 'YOUR_ORG/dev-platform|DEV_PLATFORM_VERSION' \
+      "$target/.github/workflows/agent.yml" \
+      "$target/.github/workflows/ci.yml"; then
+      echo "workflow callers contain an incomplete platform reference" >&2
+      failed=true
+    fi
+    if grep -En 'Replace this guidance|Describe what the product|Record confirmed' \
+      "$target/PROJECT.md"; then
+      echo "PROJECT.md still contains template guidance" >&2
+      failed=true
+    fi
+    if grep -En 'Document the important|document the command|Document existing' \
+      "$target/AGENTS.md"; then
+      echo "AGENTS.md still contains template guidance" >&2
+      failed=true
+    fi
+
+    if ! grep -Fq 'openai_api_key: ${{ secrets.OPENAI_API_KEY }}' \
+      "$target/.github/workflows/agent.yml"; then
+      echo "agent workflow caller must pass the named OPENAI_API_KEY secret" >&2
+      failed=true
+    fi
+
+    local agent_ref ci_ref agent_repository ci_repository agent_version ci_version
+    agent_ref=$(sed -nE 's|^[[:space:]]*uses:[[:space:]]+([^[:space:]]+/\.github/workflows/agent\.yml@[^[:space:]]+).*$|\1|p' \
+      "$target/.github/workflows/agent.yml")
+    ci_ref=$(sed -nE 's|^[[:space:]]*uses:[[:space:]]+([^[:space:]]+/\.github/workflows/ci\.yml@[^[:space:]]+).*$|\1|p' \
+      "$target/.github/workflows/ci.yml")
+    agent_repository=${agent_ref%%/.github/workflows/*}
+    ci_repository=${ci_ref%%/.github/workflows/*}
+    agent_version=${agent_ref##*@}
+    ci_version=${ci_ref##*@}
+    if [[ -z $agent_ref || -z $ci_ref || $agent_repository != "$ci_repository" || $agent_version != "$ci_version" ]]; then
+      echo "workflow callers must use the same platform repository and version" >&2
+      failed=true
+    elif [[ $mode == canary ]]; then
+      if [[ ! $agent_version =~ ^[0-9a-f]{40}$ ]]; then
+        echo "canary workflow callers must use a full candidate commit SHA" >&2
+        failed=true
+      fi
+    elif [[ $agent_version != main ]]; then
+      echo "normal client workflow callers must follow the reviewed main release channel" >&2
+      failed=true
+    fi
+  fi
+
+  cat <<'EOF'
+
+GitHub checklist (not modified by this command):
+- OpenAI API billing is active; set a small project budget and usage alerts
+- Secret: OPENAI_API_KEY
+- Variables: AGENT_AUTHORIZED_ACTORS, PIPELINE_ENABLED=true
+- Variable: AGENT_PIPELINE_ENABLED=true (organization-wide when available,
+  otherwise set it separately in every personal-account repository)
+- Optional variables: AGENT_PROTECTED_PATHS and CI_*_COMMAND
+- Label: agent
+- Actions may create pull requests
+- The private dev-platform repository allows this client to call workflows
+- Future keyless OIDC migration changes only caller authentication; see the
+  dev-platform README before deleting OPENAI_API_KEY
+EOF
+
+  if [[ $failed == true ]]; then
+    return 1
+  fi
+  echo "Local client setup is ready."
+}
+
+case ${1:-} in
+  install)
+    shift
+    install_client client "$@"
+    ;;
+  install-canary)
+    shift
+    install_client canary "$@"
+    ;;
+  check)
+    shift
+    check_client client "$@"
+    ;;
+  check-canary)
+    shift
+    check_client canary "$@"
+    ;;
+  *)
+    usage >&2
+    exit 64
+    ;;
+esac
