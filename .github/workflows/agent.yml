@@ -364,9 +364,13 @@ jobs:
           defaults = """PROJECT.md
           AGENTS.md
           **/AGENTS.md
+          .github/workflows
           .github/workflows/**
+          .github/actions
           .github/actions/**
+          infrastructure
           infrastructure/**
+          terraform
           terraform/**
           *.tf
           **/*.tf
@@ -434,7 +438,7 @@ jobs:
 
           gh workflow run ci.yml \
             --repo "$GITHUB_REPOSITORY" \
-            --ref "$BASE_REF" \
+            --ref "$branch" \
             -f base_ref="$BASE_REF" \
             -f head_ref="$head_sha"
           echo "Draft PR: $pr_url" >> "$GITHUB_STEP_SUMMARY"

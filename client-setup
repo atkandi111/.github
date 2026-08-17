@@ -20,9 +20,9 @@ usage:
   ./client-setup install-canary TARGET OWNER/REPOSITORY COMMIT_SHA
   ./client-setup check-canary TARGET
 
-Normal clients follow the reviewed dev-platform v1 release channel automatically.
+Normal clients follow the reviewed dev-platform main release channel automatically.
 The canary-only commands accept a full 40-character candidate commit SHA so a
-platform change can be tested before it reaches v1. The installer never
+platform change can be tested before it reaches main. The installer never
 overwrites an existing file or configures GitHub settings and secrets.
 EOF
 }
@@ -33,7 +33,33 @@ absolute_directory() {
     echo "directory not found: $directory" >&2
     return 1
   fi
-  (cd "$directory" && pwd)
+  (cd "$directory" && pwd -P)
+}
+
+validate_destination_parent() {
+  local target=$1
+  local relative=$2
+  local parent current part
+  local -a parts
+
+  parent=$(dirname "$relative")
+  if [[ $parent == . ]]; then
+    return 0
+  fi
+
+  current=$target
+  IFS=/ read -r -a parts <<< "$parent"
+  for part in "${parts[@]}"; do
+    current="$current/$part"
+    if [[ -L $current ]]; then
+      echo "refusing symlinked destination directory: $current" >&2
+      return 1
+    fi
+    if [[ -e $current && ! -d $current ]]; then
+      echo "destination parent is not a directory: $current" >&2
+      return 1
+    fi
+  done
 }
 
 install_client() {
@@ -51,7 +77,7 @@ install_client() {
   local target platform_repository version check_command
   target=$(absolute_directory "$1")
   platform_repository=$2
-  version=v1
+  version=main
   check_command=check
   if [[ $mode == canary ]]; then
     version=$3
@@ -69,6 +95,9 @@ install_client() {
 
   local relative collision=false
   for relative in "${client_files[@]}"; do
+    if ! validate_destination_parent "$target" "$relative"; then
+      collision=true
+    fi
     if [[ -e "$target/$relative" || -L "$target/$relative" ]]; then
       echo "refusing to overwrite: $target/$relative" >&2
       collision=true
@@ -84,7 +113,7 @@ install_client() {
     if [[ $mode == canary ]]; then
       sed \
         -e "s|YOUR_ORG/dev-platform|$platform_repository|g" \
-        -e "s|@v1|@$version|g" \
+        -e "s|@main|@$version|g" \
         "$template_root/$relative" > "$target/$relative"
     else
       sed \
@@ -162,8 +191,8 @@ check_client() {
         echo "canary workflow callers must use a full candidate commit SHA" >&2
         failed=true
       fi
-    elif [[ $agent_version != v1 ]]; then
-      echo "normal client workflow callers must follow the reviewed v1 release channel" >&2
+    elif [[ $agent_version != main ]]; then
+      echo "normal client workflow callers must follow the reviewed main release channel" >&2
       failed=true
     fi
   fi

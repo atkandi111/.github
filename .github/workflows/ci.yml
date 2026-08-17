@@ -104,9 +104,13 @@ jobs:
           defaults = """PROJECT.md
           AGENTS.md
           **/AGENTS.md
+          .github/workflows
           .github/workflows/**
+          .github/actions
           .github/actions/**
+          infrastructure
           infrastructure/**
+          terraform
           terraform/**
           *.tf
           **/*.tf

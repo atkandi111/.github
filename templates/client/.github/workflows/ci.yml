@@ -5,7 +5,7 @@ name: Client CI
 # =============================================================================
 on:
   pull_request:
-    types: [opened, synchronize, reopened]
+    types: [opened, synchronize, reopened, edited]
   workflow_dispatch:
     inputs:
       base_ref:
@@ -25,7 +25,7 @@ permissions:
 # =============================================================================
 jobs:
   verify:
-    uses: YOUR_ORG/dev-platform/.github/workflows/ci.yml@v1
+    uses: YOUR_ORG/dev-platform/.github/workflows/ci.yml@main
     with:
       base_ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.ref || inputs.base_ref }}
       head_ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || inputs.head_ref }}

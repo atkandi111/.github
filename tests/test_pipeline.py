@@ -21,6 +21,9 @@ CLIENT_CI = (ROOT / "templates/client/.github/workflows/ci.yml").read_text()
 CLIENT_AGENTS = (ROOT / "templates/client/AGENTS.md").read_text()
 ISSUE_FORM = (ROOT / "templates/client/.github/ISSUE_TEMPLATE/agent-task.yml").read_text()
 README = (ROOT / "README.md").read_text()
+SECURITY = (ROOT / "docs/security.md").read_text()
+RELEASE = (ROOT / "docs/release.md").read_text()
+ALL_DOCS = "\n".join((README, SECURITY, RELEASE))
 ALL_WORKFLOWS = "\n".join((AGENT, CI, CLIENT_AGENT, CLIENT_CI))
 
 
@@ -243,10 +246,11 @@ def test_privilege_and_trigger_boundaries() -> None:
     check("contents:" not in guard and "issues: write" in guard, "guard must receive only Issue permission")
     check("gh workflow run ci.yml" in publish, "explicit CI dispatch missing")
     check('head_sha=$(git rev-parse HEAD)' in publish, "publisher must capture the immutable commit")
-    check('--ref "$BASE_REF"' in publish, "CI dispatch must use the trusted base workflow")
+    check('--ref "$branch"' in publish, "CI run must attach to the published PR head")
     check('-f head_ref="$head_sha"' in publish, "CI dispatch must verify the immutable commit")
     check('-f head_ref="$branch"' not in publish, "CI dispatch must not verify a mutable branch")
     check("head_ref must be a full lowercase commit SHA" in CI, "CI must reject mutable revision inputs")
+    check("types: [opened, synchronize, reopened, edited]" in CLIENT_CI, "CI must rerun when a PR base is edited")
     check("--draft" in publish, "PR must be draft")
     check("--input -" in AGENT, "attempt label JSON must be passed as data")
 
@@ -260,11 +264,11 @@ def test_contracts() -> None:
     )
     for heading in headings:
         check(heading in AGENT, f"workflow validation missing {heading}")
-        check(heading in README, f"README agent contract missing {heading}")
+        check(heading in ALL_DOCS, f"documented agent contract missing {heading}")
     for field in ("label: Goal", "label: Acceptance criteria", "label: Out of scope", "label: UX / visual constraints"):
         check(field in ISSUE_FORM, f"Issue form missing {field}")
     check("labels: []" in ISSUE_FORM, "Issue creation must not authorize itself")
-    check("Improve the homepage CTA." in README, "ambiguity canary missing")
+    check("Improve the homepage CTA." in RELEASE, "ambiguity canary missing")
     check("Follow KISS" in CLIENT_AGENTS, "client guidance must require the smallest safe implementation")
     check("avoid speculative abstractions" in CLIENT_AGENTS, "client guidance must reject speculative complexity")
     check("new runtime dependency" in CLIENT_AGENTS, "client runtime dependency boundary missing")
@@ -276,11 +280,10 @@ def test_contracts() -> None:
     check('branch="issue/$ISSUE_NUMBER-attempt-$ATTEMPT"' in AGENT, "publisher branch convention missing")
     check("agent/issue-" not in AGENT, "obsolete agent branch prefix remains")
     check('git commit -m "chore(issue):' in AGENT, "publisher commit must use a Conventional Commit subject")
-    check("immutable `v1.x.y` release" in README, "immutable release contract missing")
-    check("compatibility tag `v1`" in README, "moving v1 release channel missing")
-    check("### Authentication now and later" in README, "authentication migration guide missing")
-    check("1,024-byte" in README, "OIDC compatibility gate is not documented")
-    check("service account and\nkey for each connected repository" in README, "per-repository credential boundary missing")
+    check("`main` is the client release channel" in README, "main release contract missing")
+    check("## Authentication now and later" in SECURITY, "authentication migration guide missing")
+    check("1,024-byte" in SECURITY, "OIDC compatibility gate is not documented")
+    check("service account and key for each connected repository" in SECURITY, "per-repository credential boundary missing")
 
 
 def test_protected_path_code() -> None:
@@ -289,6 +292,8 @@ def test_protected_path_code() -> None:
     for code in blocks:
         check(run_protected_matcher(code, ["src/app.ts"]) == 0, "normal path should pass")
         check(run_protected_matcher(code, ["PROJECT.md"]) != 0, "PROJECT.md should be blocked")
+        for root in (".github/workflows", ".github/actions", "infrastructure", "terraform"):
+            check(run_protected_matcher(code, [root]) != 0, f"protected tree root should be blocked: {root}")
         check(run_protected_matcher(code, [".github/workflows/release.yml"]) != 0, "workflow should be blocked")
         check(
             run_protected_matcher(code, [".github/workflows/evil\nname.yml"]) != 0,
@@ -354,8 +359,8 @@ def test_client_callers_stay_thin() -> None:
     check(len(CLIENT_AGENT.splitlines()) < 45, "agent caller is no longer thin")
     check(len(CLIENT_CI.splitlines()) < 55, "CI caller is no longer thin")
     check("DEV_PLATFORM_VERSION" not in CLIENT_AGENT + CLIENT_CI, "obsolete version placeholder remains")
-    check(CLIENT_AGENT.count("@v1") == 1, "agent caller must follow dev-platform v1")
-    check(CLIENT_CI.count("@v1") == 1, "CI caller must follow dev-platform v1")
+    check(CLIENT_AGENT.count("@main") == 1, "agent caller must follow dev-platform main")
+    check(CLIENT_CI.count("@main") == 1, "CI caller must follow dev-platform main")
     check("openai_api_key: ${{ secrets.OPENAI_API_KEY }}" in CLIENT_AGENT, "agent caller must pass only its named OpenAI secret")
     check("id-token: write" not in CLIENT_AGENT, "OIDC must remain disabled until the official Action is compatible")
 
@@ -382,8 +387,8 @@ def test_client_setup() -> None:
         ):
             check((target / relative).is_file(), f"client install missed {relative}")
         callers = (target / ".github/workflows/agent.yml").read_text() + (target / ".github/workflows/ci.yml").read_text()
-        check("example/dev-platform/.github/workflows/agent.yml@v1" in callers, "agent v1 reference missing")
-        check("example/dev-platform/.github/workflows/ci.yml@v1" in callers, "CI v1 reference missing")
+        check("example/dev-platform/.github/workflows/agent.yml@main" in callers, "agent main reference missing")
+        check("example/dev-platform/.github/workflows/ci.yml@main" in callers, "CI main reference missing")
 
         collision = subprocess.run(
             [str(CLIENT_SETUP), "install", str(target), "example/dev-platform"],
@@ -407,6 +412,22 @@ def test_client_setup() -> None:
         )
         check(symlink_collision.returncode != 0, "client install should refuse dangling symlink collisions")
         check(not dangling_target.exists(), "client install must not follow a dangling symlink")
+
+        parent_symlink_client = pathlib.Path(directory) / "parent-symlink-client"
+        parent_symlink_client.mkdir()
+        outside = pathlib.Path(directory) / "outside"
+        outside.mkdir()
+        (parent_symlink_client / ".github").symlink_to(outside, target_is_directory=True)
+        parent_symlink = subprocess.run(
+            [str(CLIENT_SETUP), "install", str(parent_symlink_client), "example/dev-platform"],
+            text=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            check=False,
+        )
+        check(parent_symlink.returncode != 0, "client install should refuse symlinked destination parents")
+        check(not any(outside.iterdir()), "client install must not write through a parent symlink")
+        check(not (parent_symlink_client / "AGENTS.md").exists(), "unsafe install must not write partial files")
 
         incomplete = subprocess.run(
             [str(CLIENT_SETUP), "check", str(target)],
@@ -457,7 +478,7 @@ def test_client_setup() -> None:
         check(extended.returncode == 0, f"additional client Actions should not confuse reference validation: {extended.stdout}")
 
         original_ci = ci_caller.read_text()
-        ci_caller.write_text(original_ci.replace("@v1", "@" + "b" * 40))
+        ci_caller.write_text(original_ci.replace("@main", "@" + "b" * 40))
         mismatched = subprocess.run(
             [str(CLIENT_SETUP), "check", str(target)],
             text=True,
