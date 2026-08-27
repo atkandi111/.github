@@ -1,0 +1,176 @@
+name: Reusable governance
+
+on:
+  workflow_call:
+    inputs:
+      record_kind:
+        required: true
+        type: string
+      record_title:
+        required: true
+        type: string
+      base_ref:
+        required: false
+        default: main
+        type: string
+      head_ref:
+        required: false
+        default: ""
+        type: string
+      head_branch:
+        required: false
+        default: ""
+        type: string
+      automation_prefixes:
+        required: false
+        default: "dependabot/"
+        type: string
+      legacy_branches:
+        required: false
+        default: ""
+        type: string
+      enforce:
+        description: Prospective naming enforcement; enable only after pipeline compatibility is verified.
+        required: false
+        default: false
+        type: boolean
+
+jobs:
+  validate:
+    name: Validate governance naming
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    steps:
+      - name: Check out exact proposed revision
+        if: inputs.enforce && inputs.record_kind == 'pull_request'
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          ref: ${{ inputs.head_ref }}
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Check branch, pull-request title, and commits
+        if: inputs.enforce
+        shell: bash
+        env:
+          RECORD_KIND: ${{ inputs.record_kind }}
+          RECORD_TITLE: ${{ inputs.record_title }}
+          BASE_REF: ${{ inputs.base_ref }}
+          HEAD_REF: ${{ inputs.head_ref }}
+          HEAD_BRANCH: ${{ inputs.head_branch }}
+          AUTOMATION_PREFIXES: ${{ inputs.automation_prefixes }}
+          LEGACY_BRANCHES: ${{ inputs.legacy_branches }}
+        run: |
+          set -euo pipefail
+          if [[ "$RECORD_KIND" == pull_request ]]; then
+            git check-ref-format "refs/heads/$BASE_REF" >/dev/null
+            git show-ref --verify --quiet "refs/remotes/origin/$BASE_REF"
+            [[ $(git rev-parse HEAD) == "$HEAD_REF" ]]
+          fi
+          cat > "$RUNNER_TEMP/naming.py" <<'PY'
+          # BEGIN GENERATED NAMING VALIDATOR
+          """Portfolio naming policy used by the reusable governance workflow."""
+
+          from __future__ import annotations
+
+          import os
+          import re
+          import subprocess
+          import sys
+
+
+          CONVENTIONAL = re.compile(
+              r"^(?:build|chore|ci|docs|feat|fix|perf|refactor|revert|test)"
+              r"(?:\([a-z0-9][a-z0-9.-]*\))?!?: [a-z0-9].{0,71}$"
+          )
+          HUMAN_BRANCH = re.compile(
+              r"^(?:chore|ci|docs|feat|fix|refactor|test)/[a-z0-9]+(?:-[a-z0-9]+)*$"
+          )
+          PIPELINE_BRANCH = re.compile(r"^issue/[1-9][0-9]*$")
+          FORBIDDEN_ISSUE_PREFIX = re.compile(
+              r"^(?:\[[^]]+\]\s*|(?:agent|codex|repo|repository|status|priority|task)\s*:\s*)",
+              re.IGNORECASE,
+          )
+          CONVENTIONAL_ISSUE_PREFIX = re.compile(
+              r"^(?:build|chore|ci|docs|feat|fix|perf|refactor|revert|test)(?:\([^)]*\))?!?:\s",
+              re.IGNORECASE,
+          )
+
+
+          def fail(messages: list[str]) -> int:
+              for message in messages:
+                  print(f"::error::{message}")
+              return 1
+
+
+          def validate_issue(title: str) -> int:
+              errors: list[str] = []
+              words = title.split()
+              if not title or title != title.strip():
+                  errors.append("Issue title must not be empty or padded with whitespace")
+              if len(title) > 60:
+                  errors.append("Issue title must be 60 characters or fewer")
+              if title.endswith("."):
+                  errors.append("Issue title must not end with a period")
+              if title and title[0].isalpha() and not title[0].isupper():
+                  errors.append("Issue title must use sentence case")
+              if FORBIDDEN_ISSUE_PREFIX.search(title) or CONVENTIONAL_ISSUE_PREFIX.search(title):
+                  errors.append("Issue title must not include metadata, tool, task, or Conventional Commit prefixes")
+              if not 3 <= len(words) <= 8:
+                  print("::warning::Prefer a concise Issue title of 3-8 words")
+              return fail(errors) if errors else 0
+
+
+          def validate_pr(title: str, branch: str, base_ref: str, legacy: set[str], automation: tuple[str, ...]) -> int:
+              errors: list[str] = []
+              if branch in legacy:
+                  print(f"::warning::Exact legacy branch exception used: {branch}")
+              elif branch.startswith(("agent/", "codex/")):
+                  errors.append("New agent/ and codex/ branches are forbidden")
+              elif not (
+                  HUMAN_BRANCH.fullmatch(branch)
+                  or PIPELINE_BRANCH.fullmatch(branch)
+                  or any(branch.startswith(prefix) and len(branch) > len(prefix) for prefix in automation)
+              ):
+                  errors.append("Branch must use <type>/<short-kebab-scope>, issue/<number>, or an approved automation prefix")
+              if not CONVENTIONAL.fullmatch(title):
+                  errors.append("Pull-request title must be a concise Conventional Commit subject")
+
+              result = subprocess.run(
+                  ["git", "log", "--format=%s", f"origin/{base_ref}...HEAD"],
+                  check=False,
+                  text=True,
+                  stdout=subprocess.PIPE,
+                  stderr=subprocess.PIPE,
+              )
+              if result.returncode != 0:
+                  errors.append("Unable to compare proposed commits with the trusted base")
+              else:
+                  for subject in result.stdout.splitlines():
+                      if not CONVENTIONAL.fullmatch(subject):
+                          errors.append(f"Commit subject is not Conventional Commit format: {subject!r}")
+              return fail(errors) if errors else 0
+
+
+          def main() -> int:
+              kind = os.environ.get("RECORD_KIND", "")
+              title = os.environ.get("RECORD_TITLE", "")
+              if kind == "issue":
+                  return validate_issue(title)
+              if kind != "pull_request":
+                  return fail(["record_kind must be issue or pull_request"])
+              legacy = {value for value in os.environ.get("LEGACY_BRANCHES", "").splitlines() if value}
+              automation = tuple(value for value in os.environ.get("AUTOMATION_PREFIXES", "dependabot/").splitlines() if value)
+              return validate_pr(title, os.environ.get("HEAD_BRANCH", ""), os.environ.get("BASE_REF", ""), legacy, automation)
+
+
+          if __name__ == "__main__":
+              sys.exit(main())
+          # END GENERATED NAMING VALIDATOR
+          PY
+          python3 "$RUNNER_TEMP/naming.py"
+      - name: Report disabled enforcement
+        if: ${{ !inputs.enforce }}
+        shell: bash
+        run: echo 'Naming enforcement is not enabled for this repository.' >> "$GITHUB_STEP_SUMMARY"
