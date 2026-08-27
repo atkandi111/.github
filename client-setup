@@ -7,9 +7,13 @@ template_root="$platform_root/templates/client"
 client_files=(
   AGENTS.md
   PROJECT.md
+  .github/ISSUE_TEMPLATE/change-request.yml
   .github/ISSUE_TEMPLATE/agent-task.yml
+  .github/ISSUE_TEMPLATE/config.yml
+  .github/pull_request_template.md
   .github/workflows/agent.yml
   .github/workflows/ci.yml
+  .github/workflows/governance.yml
 )
 
 usage() {
@@ -206,6 +210,10 @@ GitHub checklist (not modified by this command):
 - Variable: AGENT_PIPELINE_ENABLED=true (organization-wide when available,
   otherwise set it separately in every personal-account repository)
 - Optional variables: AGENT_PROTECTED_PATHS and CI_*_COMMAND
+- Variable: GOVERNANCE_NAMING_ENFORCED=true only after the stable issue/<number>
+  pipeline contract is installed and verified
+- Optional variables: GOVERNANCE_AUTOMATION_PREFIXES and exact, expiring
+  GOVERNANCE_LEGACY_BRANCHES exceptions
 - Label: agent
 - Actions may create pull requests
 - The private dev-platform repository allows this client to call workflows

@@ -16,15 +16,19 @@ ROOT = pathlib.Path(__file__).resolve().parents[1]
 CLIENT_SETUP = ROOT / "client-setup"
 AGENT = (ROOT / ".github/workflows/agent.yml").read_text()
 CI = (ROOT / ".github/workflows/ci.yml").read_text()
+GOVERNANCE = (ROOT / ".github/workflows/governance.yml").read_text()
 CLIENT_AGENT = (ROOT / "templates/client/.github/workflows/agent.yml").read_text()
 CLIENT_CI = (ROOT / "templates/client/.github/workflows/ci.yml").read_text()
+CLIENT_GOVERNANCE = (ROOT / "templates/client/.github/workflows/governance.yml").read_text()
 CLIENT_AGENTS = (ROOT / "templates/client/AGENTS.md").read_text()
 ISSUE_FORM = (ROOT / "templates/client/.github/ISSUE_TEMPLATE/agent-task.yml").read_text()
+CHANGE_FORM = (ROOT / "templates/client/.github/ISSUE_TEMPLATE/change-request.yml").read_text()
+NAMING = ROOT / "governance/naming.py"
 README = (ROOT / "README.md").read_text()
 SECURITY = (ROOT / "docs/security.md").read_text()
 RELEASE = (ROOT / "docs/release.md").read_text()
 ALL_DOCS = "\n".join((README, SECURITY, RELEASE))
-ALL_WORKFLOWS = "\n".join((AGENT, CI, CLIENT_AGENT, CLIENT_CI))
+ALL_WORKFLOWS = "\n".join((AGENT, CI, GOVERNANCE, CLIENT_AGENT, CLIENT_CI, CLIENT_GOVERNANCE))
 
 
 def check(condition: bool, message: str) -> None:
@@ -159,7 +163,7 @@ printf '{"labels":["%s"]}\\n' "$4"
 
 
 def test_action_pins() -> None:
-    for workflow in (AGENT, CI):
+    for workflow in (AGENT, CI, GOVERNANCE):
         for reference in re.findall(r"uses:\s*([^\s#]+)", workflow):
             if reference.startswith(("actions/", "openai/")):
                 check(
@@ -320,6 +324,61 @@ def test_contracts() -> None:
     check("service account and key for each connected repository" in SECURITY, "per-repository credential boundary missing")
 
 
+def run_naming(kind: str, title: str, *, branch: str = "", commit: str = "feat: add fixture", legacy: str = "") -> subprocess.CompletedProcess[str]:
+    with tempfile.TemporaryDirectory() as directory:
+        root = pathlib.Path(directory)
+        env = os.environ.copy()
+        env.update({
+            "RECORD_KIND": kind,
+            "RECORD_TITLE": title,
+            "BASE_REF": "main",
+            "HEAD_BRANCH": branch,
+            "AUTOMATION_PREFIXES": "dependabot/",
+            "LEGACY_BRANCHES": legacy,
+        })
+        if kind == "pull_request":
+            subprocess.run(["git", "init", "-q", root], check=True)
+            subprocess.run(["git", "-C", root, "config", "user.name", "test"], check=True)
+            subprocess.run(["git", "-C", root, "config", "user.email", "test@example.invalid"], check=True)
+            (root / "fixture").write_text("base\n")
+            subprocess.run(["git", "-C", root, "add", "fixture"], check=True)
+            subprocess.run(["git", "-C", root, "commit", "-qm", "chore: initialize fixture"], check=True)
+            base = subprocess.check_output(["git", "-C", root, "rev-parse", "HEAD"], text=True).strip()
+            subprocess.run(["git", "-C", root, "update-ref", "refs/remotes/origin/main", base], check=True)
+            (root / "fixture").write_text("head\n")
+            subprocess.run(["git", "-C", root, "add", "fixture"], check=True)
+            subprocess.run(["git", "-C", root, "commit", "-qm", commit], check=True)
+        return subprocess.run(
+            [sys.executable, str(NAMING)], cwd=root, env=env, text=True,
+            stdout=subprocess.PIPE, stderr=subprocess.STDOUT, check=False,
+        )
+
+
+def test_naming_policy() -> None:
+    for title in ("Add export controls", "Fix login"):
+        check(run_naming("issue", title).returncode == 0, f"valid Issue title rejected: {title}")
+    for title in ("feat: add export controls", "[P1] Add export controls", "add export controls", "Add export controls."):
+        check(run_naming("issue", title).returncode != 0, f"invalid Issue title accepted: {title}")
+
+    valid_title = "feat(export): add export controls"
+    for branch in ("feat/add-export-controls", "issue/17", "dependabot/npm_and_yarn/example-2.0"):
+        check(run_naming("pull_request", valid_title, branch=branch).returncode == 0, f"valid branch rejected: {branch}")
+    check(run_naming("pull_request", valid_title, branch="issue/17-attempt-2", legacy="issue/17-attempt-2").returncode == 0, "exact legacy exception rejected")
+    for branch in ("agent/add-export", "codex/add-export", "issue/17-attempt-2", "feat/Add_Export"):
+        check(run_naming("pull_request", valid_title, branch=branch).returncode != 0, f"invalid branch accepted: {branch}")
+    check(run_naming("pull_request", "Add export controls", branch="feat/add-export").returncode != 0, "non-Conventional PR title accepted")
+    check(run_naming("pull_request", valid_title, branch="feat/add-export", commit="Add export controls").returncode != 0, "non-Conventional commit accepted")
+
+    check("blank_issues_enabled: false" in (ROOT / ".github/ISSUE_TEMPLATE/config.yml").read_text(), "blank Issues must be disabled")
+    check("3-8 word" in CHANGE_FORM, "human Issue form lacks concise-title guidance")
+    check((ROOT / ".github/ISSUE_TEMPLATE/change-request.yml").read_text() == CHANGE_FORM, "human Issue form copies drifted")
+    check((ROOT / ".github/ISSUE_TEMPLATE/agent-task.yml").read_text().rstrip() == ISSUE_FORM.rstrip(), "agent Issue form copies drifted")
+    check((ROOT / ".github/pull_request_template.md").read_text() == (ROOT / "templates/client/.github/pull_request_template.md").read_text(), "PR template copies drifted")
+    check("uses: YOUR_ORG/dev-platform/.github/workflows/governance.yml@main" in CLIENT_GOVERNANCE, "thin governance caller missing")
+    check("default: false" in GOVERNANCE and "inputs.enforce" in GOVERNANCE, "naming enforcement must default safe-off")
+    check("GOVERNANCE_NAMING_ENFORCED == 'true'" in CLIENT_GOVERNANCE, "client naming activation gate missing")
+
+
 def test_protected_path_code() -> None:
     blocks = embedded_python_blocks(AGENT) + embedded_python_blocks(CI)
     check(len(blocks) == 2, f"expected two protected-path implementations, found {len(blocks)}")
@@ -415,9 +474,13 @@ def test_client_setup() -> None:
         for relative in (
             "AGENTS.md",
             "PROJECT.md",
+            ".github/ISSUE_TEMPLATE/change-request.yml",
             ".github/ISSUE_TEMPLATE/agent-task.yml",
+            ".github/ISSUE_TEMPLATE/config.yml",
+            ".github/pull_request_template.md",
             ".github/workflows/agent.yml",
             ".github/workflows/ci.yml",
+            ".github/workflows/governance.yml",
         ):
             check((target / relative).is_file(), f"client install missed {relative}")
         callers = (target / ".github/workflows/agent.yml").read_text() + (target / ".github/workflows/ci.yml").read_text()
@@ -576,6 +639,7 @@ def main() -> None:
         test_privilege_and_trigger_boundaries,
         test_status_writer_job_isolation,
         test_contracts,
+        test_naming_policy,
         test_protected_path_code,
         test_immutable_revision_guard,
         test_ci_failure_propagation,
