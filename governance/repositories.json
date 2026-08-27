@@ -1,0 +1,48 @@
+{
+  "schema_version": 1,
+  "project": {
+    "owner": "atkandi111",
+    "number": 2,
+    "name": "Atkandi Portfolio"
+  },
+  "required_files": {
+    "governance": [
+      "AGENTS.md",
+      ".github/ISSUE_TEMPLATE/agent-task.yml",
+      ".github/ISSUE_TEMPLATE/change-request.yml",
+      ".github/ISSUE_TEMPLATE/config.yml",
+      ".github/pull_request_template.md",
+      ".github/workflows/agent.yml",
+      ".github/workflows/ci.yml",
+      ".github/workflows/governance.yml"
+    ],
+    "client": [
+      "AGENTS.md",
+      "PROJECT.md",
+      ".github/ISSUE_TEMPLATE/agent-task.yml",
+      ".github/ISSUE_TEMPLATE/change-request.yml",
+      ".github/ISSUE_TEMPLATE/config.yml",
+      ".github/pull_request_template.md",
+      ".github/workflows/agent.yml",
+      ".github/workflows/ci.yml",
+      ".github/workflows/governance.yml"
+    ]
+  },
+  "repositories": [
+    {"name": "atkandi111/dev-platform", "role": "governance", "default_branch": "main", "managed": true},
+    {"name": "atkandi111/demandph-website", "role": "client", "default_branch": "main", "managed": true},
+    {"name": "atkandi111/Mahjongtale", "role": "client", "default_branch": "main", "managed": true},
+    {"name": "atkandi111/rotary-binan-website", "role": "client", "default_branch": "main", "managed": true},
+    {"name": "atkandi111/infrastructure", "role": "client", "default_branch": "main", "managed": true}
+  ],
+  "exceptions": [
+    {
+      "repository": "atkandi111/demandph-website",
+      "kind": "legacy_branch",
+      "value": "agent/chore-lightweight-change-management",
+      "owner": "atkandi111",
+      "expires_when": "PR #55 closes",
+      "reason": "Reuse the existing template canary instead of opening a duplicate rollout PR."
+    }
+  ]
+}
