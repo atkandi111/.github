@@ -4,19 +4,22 @@
     "aws": {
       "display_name": "AWS",
       "allowed_publishers": ["aws", "awslabs"],
-      "allowed_sources": ["https://github.com/aws/", "https://github.com/awslabs/", "https://docs.aws.amazon.com/"],
+      "allowed_sources": ["https://github.com/aws/", "https://github.com/awslabs/"],
+      "allowed_evidence": ["https://github.com/aws/", "https://github.com/awslabs/", "https://docs.aws.amazon.com/"],
       "approved_skills": []
     },
     "gcp": {
       "display_name": "Google Cloud",
       "allowed_publishers": ["GoogleCloudPlatform"],
-      "allowed_sources": ["https://github.com/GoogleCloudPlatform/", "https://cloud.google.com/"],
+      "allowed_sources": ["https://github.com/GoogleCloudPlatform/"],
+      "allowed_evidence": ["https://github.com/GoogleCloudPlatform/", "https://cloud.google.com/"],
       "approved_skills": []
     },
     "terraform": {
       "display_name": "HashiCorp Terraform",
       "allowed_publishers": ["hashicorp"],
-      "allowed_sources": ["https://github.com/hashicorp/", "https://developer.hashicorp.com/terraform/"],
+      "allowed_sources": ["https://github.com/hashicorp/"],
+      "allowed_evidence": ["https://github.com/hashicorp/", "https://developer.hashicorp.com/terraform/"],
       "approved_skills": []
     }
   }
