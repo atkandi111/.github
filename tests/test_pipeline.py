@@ -335,6 +335,47 @@ def test_central_agent_policy() -> None:
     check("If none is available, continue normally" in CENTRAL_AGENTS, "official-skill fallback is too strict")
     check("must restart" in AGENT_POLICY_DOCS, "running-session restart behavior is undocumented")
     check("Unreviewed source edits do not propagate" in AGENT_POLICY_DOCS, "reviewed promotion boundary is undocumented")
+    check('CENTRAL_POLICY_BYTES: "' + str(len(CENTRAL_AGENTS.encode())) + '"' in CI,
+          "CI central-policy byte marker drifted")
+    check("if: inputs.enforce_instruction_budgets" in CI, "required CI budget gate is missing")
+    check("enforce_instruction_budgets: true" in CLIENT_CI, "new client callers must enable instruction budgets")
+
+
+def test_ci_instruction_budgets() -> None:
+    block = next(
+        textwrap.dedent(candidate)
+        for candidate in run_blocks(CI)
+        if "Nested AGENTS.md exceeds 2 KiB" in candidate
+    )
+    with tempfile.TemporaryDirectory() as directory:
+        root = pathlib.Path(directory)
+        agents = root / "AGENTS.md"
+        agents.write_text("# Repository\n\nRun tests.\n")
+        env = os.environ.copy()
+        env["CENTRAL_POLICY_BYTES"] = str(len(CENTRAL_AGENTS.encode()))
+
+        def run_budget() -> int:
+            return subprocess.run(
+                ["bash", "-euo", "pipefail", "-c", block],
+                cwd=root,
+                env=env,
+                text=True,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
+                check=False,
+            ).returncode
+
+        check(run_budget() == 0, "concise regular instructions should pass CI")
+        agents.write_bytes(b"x" * 4097)
+        check(run_budget() != 0, "oversized root AGENTS.md must fail CI")
+        agents.write_text("# Repository\n")
+        nested = root / "src" / "AGENTS.md"
+        nested.parent.mkdir()
+        nested.write_bytes(b"x" * 2049)
+        check(run_budget() != 0, "oversized nested AGENTS.md must fail CI")
+        nested.unlink()
+        nested.symlink_to(agents)
+        check(run_budget() != 0, "symlinked nested AGENTS.md must fail CI")
 
 
 def test_protected_path_code() -> None:
@@ -500,6 +541,31 @@ def test_client_setup() -> None:
         )
         check(ready.returncode == 0, f"completed client setup should pass: {ready.stdout}")
 
+        outside_agents = pathlib.Path(directory) / "outside-agents.md"
+        outside_agents.write_text("# Outside\n")
+        nested = target / "src" / "AGENTS.md"
+        nested.parent.mkdir()
+        nested.symlink_to(outside_agents)
+        symlinked_nested = subprocess.run(
+            [str(CLIENT_SETUP), "check", str(target)],
+            text=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            check=False,
+        )
+        check(symlinked_nested.returncode != 0, "symlinked nested AGENTS.md must fail readiness")
+        nested.unlink()
+        nested.write_bytes(b"x" * 2049)
+        oversized_nested = subprocess.run(
+            [str(CLIENT_SETUP), "check", str(target)],
+            text=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            check=False,
+        )
+        check(oversized_nested.returncode != 0, "oversized nested AGENTS.md must fail readiness")
+        nested.unlink()
+
         agent_caller = target / ".github/workflows/agent.yml"
         original_agent = agent_caller.read_text()
         agent_caller.write_text(original_agent.replace("${{ secrets.OPENAI_API_KEY }}", "${{ secrets.WRONG_KEY }}"))
@@ -594,6 +660,7 @@ def main() -> None:
         test_status_writer_job_isolation,
         test_contracts,
         test_central_agent_policy,
+        test_ci_instruction_budgets,
         test_protected_path_code,
         test_immutable_revision_guard,
         test_ci_failure_propagation,

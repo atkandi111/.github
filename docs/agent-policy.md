@@ -15,6 +15,12 @@ Generated instruction blocks count toward these limits. Local overlays should
 contain only repository commands, project-specific safety gates, and pointers
 to focused context. They must not copy the central baseline or weaken it.
 
+The reusable CI enforces these budgets when its caller enables
+`enforce_instruction_budgets`. The current client template enables it for every
+new installation. Existing clients must reduce any oversized overlay before
+updating their caller; omitting that rollout is a visible migration gap, not a
+permanent exemption.
+
 ## Promotion
 
 1. Edit `governance/AGENTS.md` and keep the change independently reviewable.

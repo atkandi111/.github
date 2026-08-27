@@ -11,9 +11,11 @@ import sys
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 SOURCE = ROOT / "governance/AGENTS.md"
 WORKFLOW = ROOT / ".github/workflows/agent.yml"
+CI_WORKFLOW = ROOT / ".github/workflows/ci.yml"
 START = "            <central_policy>\n"
 END = "            </central_policy>"
 MAX_POLICY_BYTES = 4 * 1024
+BYTE_MARKER = '          CENTRAL_POLICY_BYTES: "'
 
 
 def rendered_block(source: str) -> str:
@@ -43,14 +45,27 @@ def main() -> int:
         return 1
 
     expected = workflow[:start] + rendered_block(source) + workflow[end + len(END):]
-    if expected == workflow:
+    ci_workflow = CI_WORKFLOW.read_text()
+    marker_start = ci_workflow.find(BYTE_MARKER)
+    if marker_start < 0 or ci_workflow.find(BYTE_MARKER, marker_start + 1) >= 0:
+        print("CI workflow must contain exactly one central-policy byte marker", file=sys.stderr)
+        return 1
+    value_start = marker_start + len(BYTE_MARKER)
+    value_end = ci_workflow.find('"', value_start)
+    if value_end < 0:
+        print("CI workflow central-policy byte marker is malformed", file=sys.stderr)
+        return 1
+    expected_ci = ci_workflow[:value_start] + str(len(source_bytes)) + ci_workflow[value_end:]
+
+    if expected == workflow and expected_ci == ci_workflow:
         print("central policy is synchronized")
         return 0
     if args.check:
         print("central policy is not synchronized; run scripts/sync-agent-policy.py", file=sys.stderr)
         return 1
     WORKFLOW.write_text(expected)
-    print("updated generated central policy block")
+    CI_WORKFLOW.write_text(expected_ci)
+    print("updated generated central policy block and CI byte marker")
     return 0
 
 

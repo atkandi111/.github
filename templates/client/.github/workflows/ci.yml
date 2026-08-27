@@ -35,6 +35,7 @@ jobs:
       test_command: ${{ vars.CI_TEST_COMMAND }}
       lint_command: ${{ vars.CI_LINT_COMMAND }}
       typecheck_command: ${{ vars.CI_TYPECHECK_COMMAND }}
+      enforce_instruction_budgets: true
 
   # ===========================================================================
   # 3. CLIENT EXTENSION POINT — optional non-production preview
