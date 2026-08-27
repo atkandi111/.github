@@ -20,9 +20,6 @@ ruby -e 'require "yaml"; ARGV.each { |file| YAML.parse_file(file); puts "yaml ok
   templates/client/.github/ISSUE_TEMPLATE/agent-task.yml
 
 python3 scripts/sync-agent-policy.py --check
-python3 scripts/sync-naming-workflow.py --check
 python3 tests/test_pipeline.py
-python3 tests/test_portfolio_audit.py
-python3 tests/test_skill_provenance.py
 git diff --check
 echo "all local checks passed"

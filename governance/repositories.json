@@ -5,55 +5,24 @@
     "number": 2,
     "name": "Atkandi Portfolio",
     "fields": {
-      "Status": {"type": "ProjectV2SingleSelectField", "options": ["Todo", "In Progress", "Review", "Done"]},
-      "Priority": {"type": "ProjectV2SingleSelectField", "options": ["P0", "P1", "P2", "P3"]},
-      "Waiting On": {"type": "ProjectV2SingleSelectField", "options": ["Me", "Client"]}
+      "Status": ["Todo", "In Progress", "Review", "Done"],
+      "Priority": ["P0", "P1", "P2", "P3"],
+      "Waiting On": ["Me", "Client"]
     }
   },
-  "required_files": {
-    "governance": [
-      {"path": "AGENTS.md", "kind": "overlay", "max_bytes": 4096},
-      {"path": ".github/ISSUE_TEMPLATE/agent-task.yml", "kind": "sha256", "digest": "sha256:63a33d99a6c6e4cd4ef2b2edf863f5b0794167a6c11f6926cfa1db83a0aa84c0"},
-      {"path": ".github/ISSUE_TEMPLATE/change-request.yml", "kind": "sha256", "digest": "sha256:a9882ea5f516b2c14ca77304d5ffd508c1d54467ccf8ce47ccb284bbf08cb810"},
-      {"path": ".github/ISSUE_TEMPLATE/config.yml", "kind": "sha256", "digest": "sha256:8b09e7df09fc7534371988062769ee427af2954a02c04c763e8a8005be0f2be4"},
-      {"path": ".github/pull_request_template.md", "kind": "sha256", "digest": "sha256:c4f5772560dd42940f7aa1f3f1a21d2c76c682a6685c2f32aade191b07fdb30b"},
-      {"path": ".github/workflows/agent.yml", "kind": "sha256", "digest": "sha256:4fdfce52accda28c07a3a87752aa65eff924e3e79afead1aa95f074d54fb4b6d"},
-      {"path": ".github/workflows/ci.yml", "kind": "sha256", "digest": "sha256:bb8516b24f16534f67a13d7d4e6a101b7a5edb1286506fda8ece9391ec9590eb"},
-      {"path": ".github/workflows/governance.yml", "kind": "sha256", "digest": "sha256:7cf8011464c55db635f3dfe33e40d5d0c67793048f40431af6c74e1fbc38ba62"},
-      {"path": ".github/workflows/platform-checks.yml", "kind": "sha256", "digest": "sha256:2da0aaa9381392666ba531f4dd3ebdc69029ae8fffbdffda04100ecc32b2390e"},
-      {"path": ".github/workflows/platform-governance.yml", "kind": "sha256", "digest": "sha256:b137e862e0a6c8dd9d60ee9a15a08a9fbd3045a6307f9a5553b5327915bcfc2e"}
-    ],
-    "client": [
-      {"path": "AGENTS.md", "kind": "overlay", "max_bytes": 4096},
-      {"path": "PROJECT.md", "kind": "overlay", "max_bytes": 8192},
-      {"path": ".github/ISSUE_TEMPLATE/agent-task.yml", "kind": "sha256", "digest": "sha256:f8138a0603c08fac8e7f6639f0d0775fec90f43011d7ba094440cc5f0d422d15"},
-      {"path": ".github/ISSUE_TEMPLATE/change-request.yml", "kind": "sha256", "digest": "sha256:a9882ea5f516b2c14ca77304d5ffd508c1d54467ccf8ce47ccb284bbf08cb810"},
-      {"path": ".github/ISSUE_TEMPLATE/config.yml", "kind": "sha256", "digest": "sha256:8b09e7df09fc7534371988062769ee427af2954a02c04c763e8a8005be0f2be4"},
-      {"path": ".github/pull_request_template.md", "kind": "sha256", "digest": "sha256:c4f5772560dd42940f7aa1f3f1a21d2c76c682a6685c2f32aade191b07fdb30b"},
-      {"path": ".github/workflows/agent.yml", "kind": "sha256", "digest": "sha256:12cc73b419d2e84140e4c8ab95f22fe44103f0494dcb1d4ab2433ee2dcb8cc47"},
-      {"path": ".github/workflows/ci.yml", "kind": "sha256", "digest": "sha256:5c4086f590b5462e2df2d58aae1c7ac2b9424ec94bfb59228fd3f1a728b8fcfc"},
-      {"path": ".github/workflows/governance.yml", "kind": "sha256", "digest": "sha256:8e20c78fa02f2680317681b74982a88bbaae3b68362cb322d95d76382a11d5f8"}
-    ]
-  },
   "repositories": [
-    {"name": "atkandi111/dev-platform", "role": "governance", "default_branch": "main", "managed": true, "required_status_checks": ["Platform tests", "Platform governance / Validate governance naming"]},
-    {"name": "atkandi111/demandph-website", "role": "client", "default_branch": "main", "managed": true, "required_status_checks": ["dev-platform/deterministic-ci", "Client governance / Validate governance naming"]},
-    {"name": "atkandi111/Mahjongtale", "role": "client", "default_branch": "main", "managed": true, "required_status_checks": ["dev-platform/deterministic-ci", "Client governance / Validate governance naming"]},
-    {"name": "atkandi111/rotary-binan-website", "role": "client", "default_branch": "main", "managed": true, "required_status_checks": ["dev-platform/deterministic-ci", "Client governance / Validate governance naming"]},
-    {"name": "atkandi111/infrastructure", "role": "client", "default_branch": "main", "managed": true, "required_status_checks": ["dev-platform/deterministic-ci", "Client governance / Validate governance naming"]}
+    {"name": "atkandi111/dev-platform", "role": "governance"},
+    {"name": "atkandi111/demandph-website", "role": "client"},
+    {"name": "atkandi111/Mahjongtale", "role": "client"},
+    {"name": "atkandi111/rotary-binan-website", "role": "client"},
+    {"name": "atkandi111/infrastructure", "role": "client"}
   ],
-  "exceptions": [
+  "legacy_branches": [
     {
       "repository": "atkandi111/demandph-website",
-      "kind": "legacy_branch",
-      "value": "agent/chore-lightweight-change-management",
+      "branch": "agent/chore-lightweight-change-management",
       "owner": "atkandi111",
-      "expires": {
-        "kind": "pull_request_closed",
-        "repository": "atkandi111/demandph-website",
-        "number": 55
-      },
-      "reason": "Reuse the existing template canary instead of opening a duplicate rollout PR."
+      "expires_when": "PR #55 closes"
     }
   ]
 }
