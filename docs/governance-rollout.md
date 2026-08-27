@@ -17,6 +17,11 @@ and the unique identity, type, and options of required Project fields. Local
 `AGENTS.md` and `PROJECT.md` files use explicit size-bounded overlay contracts
 instead of centralized content replacement.
 
+Required contexts are role-specific and must have a checked-in producer. The
+platform emits `Platform tests` and `Platform governance / Validate governance
+naming`; installed clients emit `dev-platform/deterministic-ci` and `Client
+governance / Validate governance naming`.
+
 Exit `0` means pass, `1` means confirmed remediable drift, and `2` means
 `HUMAN INPUT REQUIRED`. Authentication, rate-limit, response-shape, and plan
 failures are indeterminate—not missing resources. The audit never changes

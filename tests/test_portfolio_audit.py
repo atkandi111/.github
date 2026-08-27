@@ -208,6 +208,29 @@ def main() -> None:
         for items in inventory["required_files"].values()
         for item in items
     )
+    expected_contexts = {
+        "governance": {"Platform tests", "Platform governance / Validate governance naming"},
+        "client": {"dev-platform/deterministic-ci", "Client governance / Validate governance naming"},
+    }
+    for repository in inventory["repositories"]:
+        assert set(repository["required_status_checks"]) == expected_contexts[repository["role"]]
+
+    for role, contracts_for_role in inventory["required_files"].items():
+        for contract in contracts_for_role:
+            if contract["kind"] != "sha256":
+                continue
+            source = ROOT / contract["path"] if role == "governance" else ROOT / "templates/client" / contract["path"]
+            content = source.read_bytes()
+            if role == "client":
+                content = content.replace(b"YOUR_ORG/dev-platform", b"atkandi111/dev-platform")
+            assert contract["digest"] == "sha256:" + hashlib.sha256(content).hexdigest()
+
+    platform_checks = (ROOT / ".github/workflows/platform-checks.yml").read_text()
+    platform_governance = (ROOT / ".github/workflows/platform-governance.yml").read_text()
+    client_governance = (ROOT / "templates/client/.github/workflows/governance.yml").read_text()
+    assert "name: Platform tests" in platform_checks
+    assert "name: Platform governance" in platform_governance
+    assert "name: Client governance" in client_governance
     print("ok: portfolio audit")
 
 

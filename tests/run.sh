@@ -8,6 +8,8 @@ ruby -e 'require "yaml"; ARGV.each { |file| YAML.parse_file(file); puts "yaml ok
   .github/workflows/agent.yml \
   .github/workflows/ci.yml \
   .github/workflows/governance.yml \
+  .github/workflows/platform-checks.yml \
+  .github/workflows/platform-governance.yml \
   templates/client/.github/workflows/agent.yml \
   templates/client/.github/workflows/ci.yml \
   templates/client/.github/workflows/governance.yml \
