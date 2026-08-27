@@ -16,17 +16,21 @@ ROOT = pathlib.Path(__file__).resolve().parents[1]
 CLIENT_SETUP = ROOT / "client-setup"
 AGENT = (ROOT / ".github/workflows/agent.yml").read_text()
 CI = (ROOT / ".github/workflows/ci.yml").read_text()
+GOVERNANCE = (ROOT / ".github/workflows/governance.yml").read_text()
 CLIENT_AGENT = (ROOT / "templates/client/.github/workflows/agent.yml").read_text()
 CLIENT_CI = (ROOT / "templates/client/.github/workflows/ci.yml").read_text()
+CLIENT_GOVERNANCE = (ROOT / "templates/client/.github/workflows/governance.yml").read_text()
 CLIENT_AGENTS = (ROOT / "templates/client/AGENTS.md").read_text()
 CENTRAL_AGENTS = (ROOT / "governance/AGENTS.md").read_text()
 AGENT_POLICY_DOCS = (ROOT / "docs/agent-policy.md").read_text()
 ISSUE_FORM = (ROOT / "templates/client/.github/ISSUE_TEMPLATE/agent-task.yml").read_text()
+CHANGE_FORM = (ROOT / "templates/client/.github/ISSUE_TEMPLATE/change-request.yml").read_text()
+NAMING = ROOT / "governance/naming.py"
 README = (ROOT / "README.md").read_text()
 SECURITY = (ROOT / "docs/security.md").read_text()
 RELEASE = (ROOT / "docs/release.md").read_text()
 ALL_DOCS = "\n".join((README, SECURITY, RELEASE))
-ALL_WORKFLOWS = "\n".join((AGENT, CI, CLIENT_AGENT, CLIENT_CI))
+ALL_WORKFLOWS = "\n".join((AGENT, CI, GOVERNANCE, CLIENT_AGENT, CLIENT_CI, CLIENT_GOVERNANCE))
 
 
 def check(condition: bool, message: str) -> None:
@@ -161,7 +165,7 @@ printf '{"labels":["%s"]}\\n' "$4"
 
 
 def test_action_pins() -> None:
-    for workflow in (AGENT, CI):
+    for workflow in (AGENT, CI, GOVERNANCE):
         for reference in re.findall(r"uses:\s*([^\s#]+)", workflow):
             if reference.startswith(("actions/", "openai/")):
                 check(
@@ -376,6 +380,59 @@ def test_ci_instruction_budgets() -> None:
         nested.unlink()
         nested.symlink_to(agents)
         check(run_budget() != 0, "symlinked nested AGENTS.md must fail CI")
+def run_naming(kind: str, title: str, *, branch: str = "", commit: str = "feat: add fixture", legacy: str = "") -> subprocess.CompletedProcess[str]:
+    with tempfile.TemporaryDirectory() as directory:
+        root = pathlib.Path(directory)
+        env = os.environ.copy()
+        env.update({
+            "RECORD_KIND": kind,
+            "RECORD_TITLE": title,
+            "BASE_REF": "main",
+            "HEAD_BRANCH": branch,
+            "AUTOMATION_PREFIXES": "dependabot/",
+            "LEGACY_BRANCHES": legacy,
+        })
+        if kind == "pull_request":
+            subprocess.run(["git", "init", "-q", root], check=True)
+            subprocess.run(["git", "-C", root, "config", "user.name", "test"], check=True)
+            subprocess.run(["git", "-C", root, "config", "user.email", "test@example.invalid"], check=True)
+            (root / "fixture").write_text("base\n")
+            subprocess.run(["git", "-C", root, "add", "fixture"], check=True)
+            subprocess.run(["git", "-C", root, "commit", "-qm", "chore: initialize fixture"], check=True)
+            base = subprocess.check_output(["git", "-C", root, "rev-parse", "HEAD"], text=True).strip()
+            subprocess.run(["git", "-C", root, "update-ref", "refs/remotes/origin/main", base], check=True)
+            (root / "fixture").write_text("head\n")
+            subprocess.run(["git", "-C", root, "add", "fixture"], check=True)
+            subprocess.run(["git", "-C", root, "commit", "-qm", commit], check=True)
+        return subprocess.run(
+            [sys.executable, str(NAMING)], cwd=root, env=env, text=True,
+            stdout=subprocess.PIPE, stderr=subprocess.STDOUT, check=False,
+        )
+
+
+def test_naming_policy() -> None:
+    for title in ("Add export controls", "Fix login"):
+        check(run_naming("issue", title).returncode == 0, f"valid Issue title rejected: {title}")
+    for title in ("feat: add export controls", "[P1] Add export controls", "add export controls", "Add export controls."):
+        check(run_naming("issue", title).returncode != 0, f"invalid Issue title accepted: {title}")
+
+    valid_title = "feat(export): add export controls"
+    for branch in ("feat/add-export-controls", "issue/17", "dependabot/npm_and_yarn/example-2.0"):
+        check(run_naming("pull_request", valid_title, branch=branch).returncode == 0, f"valid branch rejected: {branch}")
+    check(run_naming("pull_request", valid_title, branch="issue/17-attempt-2", legacy="issue/17-attempt-2").returncode == 0, "exact legacy exception rejected")
+    for branch in ("agent/add-export", "codex/add-export", "issue/17-attempt-2", "feat/Add_Export"):
+        check(run_naming("pull_request", valid_title, branch=branch).returncode != 0, f"invalid branch accepted: {branch}")
+    check(run_naming("pull_request", "Add export controls", branch="feat/add-export").returncode != 0, "non-Conventional PR title accepted")
+    check(run_naming("pull_request", valid_title, branch="feat/add-export", commit="Add export controls").returncode != 0, "non-Conventional commit accepted")
+
+    check("blank_issues_enabled: false" in (ROOT / ".github/ISSUE_TEMPLATE/config.yml").read_text(), "blank Issues must be disabled")
+    check("3-8 word" in CHANGE_FORM, "human Issue form lacks concise-title guidance")
+    check((ROOT / ".github/ISSUE_TEMPLATE/change-request.yml").read_text() == CHANGE_FORM, "human Issue form copies drifted")
+    check((ROOT / ".github/ISSUE_TEMPLATE/agent-task.yml").read_text().rstrip() == ISSUE_FORM.rstrip(), "agent Issue form copies drifted")
+    check((ROOT / ".github/pull_request_template.md").read_text() == (ROOT / "templates/client/.github/pull_request_template.md").read_text(), "PR template copies drifted")
+    check("uses: YOUR_ORG/dev-platform/.github/workflows/governance.yml@main" in CLIENT_GOVERNANCE, "thin governance caller missing")
+    check("default: false" in GOVERNANCE and "inputs.enforce" in GOVERNANCE, "naming enforcement must default safe-off")
+    check("GOVERNANCE_NAMING_ENFORCED == 'true'" in CLIENT_GOVERNANCE, "client naming activation gate missing")
 
 
 def test_protected_path_code() -> None:
@@ -473,14 +530,23 @@ def test_client_setup() -> None:
         for relative in (
             "AGENTS.md",
             "PROJECT.md",
+            ".github/ISSUE_TEMPLATE/change-request.yml",
             ".github/ISSUE_TEMPLATE/agent-task.yml",
+            ".github/ISSUE_TEMPLATE/config.yml",
+            ".github/pull_request_template.md",
             ".github/workflows/agent.yml",
             ".github/workflows/ci.yml",
+            ".github/workflows/governance.yml",
         ):
             check((target / relative).is_file(), f"client install missed {relative}")
-        callers = (target / ".github/workflows/agent.yml").read_text() + (target / ".github/workflows/ci.yml").read_text()
+        callers = "\n".join((
+            (target / ".github/workflows/agent.yml").read_text(),
+            (target / ".github/workflows/ci.yml").read_text(),
+            (target / ".github/workflows/governance.yml").read_text(),
+        ))
         check("example/dev-platform/.github/workflows/agent.yml@main" in callers, "agent main reference missing")
         check("example/dev-platform/.github/workflows/ci.yml@main" in callers, "CI main reference missing")
+        check("example/dev-platform/.github/workflows/governance.yml@main" in callers, "governance main reference missing")
 
         collision = subprocess.run(
             [str(CLIENT_SETUP), "install", str(target), "example/dev-platform"],
@@ -579,6 +645,22 @@ def test_client_setup() -> None:
         check(wrong_secret.returncode != 0, "client with the wrong OpenAI secret mapping should fail readiness")
         agent_caller.write_text(original_agent)
 
+        governance_caller = target / ".github/workflows/governance.yml"
+        original_governance = governance_caller.read_text()
+        governance_caller.write_text(original_governance.replace("example/dev-platform", "YOUR_ORG/dev-platform"))
+        unresolved_governance = subprocess.run(
+            [str(CLIENT_SETUP), "check", str(target)], text=True,
+            stdout=subprocess.PIPE, stderr=subprocess.STDOUT, check=False,
+        )
+        check(unresolved_governance.returncode != 0, "unresolved governance caller should fail readiness")
+        governance_caller.write_text(original_governance.replace("example/dev-platform", "wrong/platform"))
+        wrong_governance_repository = subprocess.run(
+            [str(CLIENT_SETUP), "check", str(target)], text=True,
+            stdout=subprocess.PIPE, stderr=subprocess.STDOUT, check=False,
+        )
+        check(wrong_governance_repository.returncode != 0, "mismatched governance repository should fail readiness")
+        governance_caller.write_text(original_governance)
+
         ci_caller = target / ".github/workflows/ci.yml"
         ci_caller.write_text(
             ci_caller.read_text()
@@ -616,8 +698,12 @@ def test_client_setup() -> None:
             check=False,
         )
         check(canary_install.returncode == 0, f"canary install failed: {canary_install.stdout}")
-        canary_callers = (canary / ".github/workflows/agent.yml").read_text() + (canary / ".github/workflows/ci.yml").read_text()
-        check(canary_callers.count("@" + candidate_sha) == 2, "canary callers must pin the same candidate SHA")
+        canary_callers = "\n".join((
+            (canary / ".github/workflows/agent.yml").read_text(),
+            (canary / ".github/workflows/ci.yml").read_text(),
+            (canary / ".github/workflows/governance.yml").read_text(),
+        ))
+        check(canary_callers.count("@" + candidate_sha) == 3, "canary callers must pin the same candidate SHA")
         (canary / "PROJECT.md").write_text("# Project\n\nA confirmed canary product contract.\n")
         (canary / "AGENTS.md").write_text("# Agent instructions\n\nRun the canary checks.\n")
         canary_ready = subprocess.run(
@@ -628,6 +714,15 @@ def test_client_setup() -> None:
             check=False,
         )
         check(canary_ready.returncode == 0, f"candidate-pinned canary should pass: {canary_ready.stdout}")
+        canary_governance = canary / ".github/workflows/governance.yml"
+        original_canary_governance = canary_governance.read_text()
+        canary_governance.write_text(original_canary_governance.replace("@" + candidate_sha, "@" + "b" * 40))
+        mismatched_canary_governance = subprocess.run(
+            [str(CLIENT_SETUP), "check-canary", str(canary)], text=True,
+            stdout=subprocess.PIPE, stderr=subprocess.STDOUT, check=False,
+        )
+        check(mismatched_canary_governance.returncode != 0, "canary governance caller must share the candidate SHA")
+        canary_governance.write_text(original_canary_governance)
         normal_check = subprocess.run(
             [str(CLIENT_SETUP), "check", str(canary)],
             text=True,
@@ -661,6 +756,7 @@ def main() -> None:
         test_contracts,
         test_central_agent_policy,
         test_ci_instruction_budgets,
+        test_naming_policy,
         test_protected_path_code,
         test_immutable_revision_guard,
         test_ci_failure_propagation,
