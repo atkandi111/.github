@@ -19,5 +19,6 @@ ruby -e 'require "yaml"; ARGV.each { |file| YAML.parse_file(file); puts "yaml ok
 
 python3 scripts/sync-naming-workflow.py --check
 python3 tests/test_pipeline.py
+python3 tests/test_skill_provenance.py
 git diff --check
 echo "all local checks passed"
