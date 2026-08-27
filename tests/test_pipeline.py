@@ -366,11 +366,11 @@ def test_naming_policy() -> None:
         check(run_naming("issue", title).returncode != 0, f"invalid Issue title accepted: {title}")
 
     valid_title = "feat(export): add export controls"
-    for branch in ("feat/add-export-controls", "issue/17", "dependabot/npm_and_yarn/example-2.0"):
+    for branch in ("feat/add-export-controls", "issue/17-attempt-2", "dependabot/npm_and_yarn/example-2.0"):
         check(run_naming("pull_request", valid_title, branch=branch).returncode == 0, f"valid branch rejected: {branch}")
     check(run_naming("pull_request", "Bump package", branch="dependabot/npm/package-2.0", commit="Bump package").returncode == 0, "approved automation naming rejected")
-    check(run_naming("pull_request", valid_title, branch="issue/17-attempt-2", legacy="issue/17-attempt-2").returncode == 0, "exact legacy exception rejected")
-    for branch in ("agent/add-export", "codex/add-export", "issue/17-attempt-2", "feat/Add_Export"):
+    check(run_naming("pull_request", valid_title, branch="agent/legacy", legacy="agent/legacy").returncode == 0, "exact legacy exception rejected")
+    for branch in ("agent/add-export", "codex/add-export", "issue/17", "feat/Add_Export"):
         check(run_naming("pull_request", valid_title, branch=branch).returncode != 0, f"invalid branch accepted: {branch}")
     check(run_naming("pull_request", "Add export controls", branch="feat/add-export").returncode != 0, "non-Conventional PR title accepted")
     check(run_naming("pull_request", valid_title, branch="feat/add-export", commit="Add export controls").returncode != 0, "non-Conventional commit accepted")
@@ -387,6 +387,7 @@ def test_naming_policy() -> None:
     check("name: Platform tests" in PLATFORM_CHECKS, "platform test check producer missing")
     check("name: Platform governance" in PLATFORM_GOVERNANCE, "platform governance check producer missing")
     check("uses: ./.github/workflows/governance.yml" in PLATFORM_GOVERNANCE, "platform governance self-caller missing")
+    check('--title "chore(issue): implement #$ISSUE_NUMBER (attempt $ATTEMPT)"' in AGENT, "pipeline PR title must satisfy governance naming")
     inventory = json.loads((ROOT / "governance/repositories.json").read_text())
     check(len(inventory["repositories"]) == 5, "portfolio repository inventory drifted")
     check(set(inventory["project"]["fields"]) == {"Status", "Priority", "Waiting On"}, "Project field contract drifted")
