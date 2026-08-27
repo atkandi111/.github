@@ -431,7 +431,7 @@ jobs:
             --draft \
             --base "$BASE_REF" \
             --head "$branch" \
-            --title "[agent] Issue #$ISSUE_NUMBER" \
+            --title "chore(issue): implement #$ISSUE_NUMBER (attempt $ATTEMPT)" \
             --body-file "$pr_body")
           gh pr edit "$pr_url" --repo "$GITHUB_REPOSITORY" --add-label agent
           gh issue comment "$ISSUE_NUMBER" --repo "$GITHUB_REPOSITORY" --body "Draft PR: $pr_url"
