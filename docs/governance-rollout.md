@@ -11,11 +11,11 @@ python3 scripts/portfolio-audit.py --json
 ```
 
 The audit checks repository access, default branches, every enabled merge
-method, the effective classic/ruleset controls on `main`, versioned semantic or
-digest contracts for managed files, Project access, and the unique identity,
-type, and options of required Project fields. Local `AGENTS.md` and `PROJECT.md`
-files use explicit size-bounded overlay contracts instead of centralized
-content replacement.
+method, the exact required-check contexts and effective classic/ruleset controls
+on `main`, canonical SHA-256 contracts for synchronized files, Project access,
+and the unique identity, type, and options of required Project fields. Local
+`AGENTS.md` and `PROJECT.md` files use explicit size-bounded overlay contracts
+instead of centralized content replacement.
 
 Exit `0` means pass, `1` means confirmed remediable drift, and `2` means
 `HUMAN INPUT REQUIRED`. Authentication, rate-limit, response-shape, and plan
@@ -30,7 +30,9 @@ D’emand PR #55 is the template canary. Update it in place after the canonical
 templates are reviewed; do not open a duplicate. Its exact legacy branch
 exception is queried on every audit and expires when that PR closes. Every
 exception needs an owner and a machine-readable expiry; an unmanaged repository
-also needs its own active exception and remains visible in the report.
+also needs its own active exception and remains visible in the report. A legacy
+branch exception is valid only while that exact branch remains the expiry PR's
+head in the same repository.
 
 The later mutation phase must remain idempotent, open focused rollout PRs,
 preserve repository-local `AGENTS.md` content, use a separately approved

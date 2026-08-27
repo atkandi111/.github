@@ -17,7 +17,6 @@ from collections.abc import Callable
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 Runner = Callable[[list[str]], subprocess.CompletedProcess[str]]
 REQUIRED_PROTECTION = {
-    "required_status_checks",
     "required_pull_request_reviews",
     "block_force_pushes",
     "block_deletions",
@@ -50,11 +49,17 @@ def at_least_one(value: object) -> bool:
     return isinstance(value, int) and not isinstance(value, bool) and value >= 1
 
 
-def classic_controls(data: dict[str, object]) -> set[str]:
+def classic_controls(data: dict[str, object]) -> tuple[set[str], set[str]]:
     controls: set[str] = set()
+    contexts: set[str] = set()
     checks = data.get("required_status_checks")
-    if isinstance(checks, dict) and (checks.get("checks") or checks.get("contexts")):
-        controls.add("required_status_checks")
+    if isinstance(checks, dict):
+        raw_checks = checks.get("checks")
+        if isinstance(raw_checks, list):
+            contexts.update(str(item.get("context")) for item in raw_checks if isinstance(item, dict) and item.get("context"))
+        raw_contexts = checks.get("contexts")
+        if isinstance(raw_contexts, list):
+            contexts.update(str(item) for item in raw_contexts if isinstance(item, str) and item)
     reviews = data.get("required_pull_request_reviews")
     if isinstance(reviews, dict) and at_least_one(reviews.get("required_approving_review_count")):
         controls.add("required_pull_request_reviews")
@@ -62,31 +67,35 @@ def classic_controls(data: dict[str, object]) -> set[str]:
         controls.add("block_force_pushes")
     if disabled(data.get("allow_deletions")):
         controls.add("block_deletions")
-    return controls
+    return controls, contexts
 
 
-def ruleset_controls(data: list[object]) -> set[str]:
+def ruleset_controls(data: list[object]) -> tuple[set[str], set[str]]:
     controls: set[str] = set()
+    contexts: set[str] = set()
     for item in data:
         if not isinstance(item, dict):
             continue
         rule_type = item.get("type")
         parameters = item.get("parameters")
-        if rule_type == "required_status_checks" and isinstance(parameters, dict) and parameters.get("required_status_checks"):
-            controls.add("required_status_checks")
+        if rule_type == "required_status_checks" and isinstance(parameters, dict):
+            raw_checks = parameters.get("required_status_checks")
+            if isinstance(raw_checks, list):
+                contexts.update(str(check.get("context")) for check in raw_checks if isinstance(check, dict) and check.get("context"))
         elif rule_type == "pull_request" and isinstance(parameters, dict) and at_least_one(parameters.get("required_approving_review_count")):
             controls.add("required_pull_request_reviews")
         elif rule_type == "non_fast_forward":
             controls.add("block_force_pushes")
         elif rule_type == "deletion":
             controls.add("block_deletions")
-    return controls
+    return controls, contexts
 
 
-def audit_protection(name: str, branch: str, run: Runner) -> dict[str, object]:
+def audit_protection(name: str, branch: str, required_contexts: set[str], run: Runner) -> dict[str, object]:
     classic = run(["api", f"repos/{name}/branches/{branch}/protection"])
     rules = run(["api", f"repos/{name}/rules/branches/{branch}"])
     controls: set[str] = set()
+    contexts: set[str] = set()
     sources: list[str] = []
     errors: list[str] = []
 
@@ -95,7 +104,9 @@ def audit_protection(name: str, branch: str, run: Runner) -> dict[str, object]:
         if error:
             errors.append(error)
         elif data is not None:
-            controls.update(classic_controls(data))
+            classic_control_set, classic_context_set = classic_controls(data)
+            controls.update(classic_control_set)
+            contexts.update(classic_context_set)
             sources.append("classic")
     elif "HTTP 404" not in detail(classic) and "Branch not protected" not in detail(classic):
         errors.append(detail(classic) or "classic branch protection query failed")
@@ -107,7 +118,9 @@ def audit_protection(name: str, branch: str, run: Runner) -> dict[str, object]:
             errors.append(f"effective rules query returned invalid JSON: {error}")
         else:
             if isinstance(data, list):
-                controls.update(ruleset_controls(data))
+                ruleset_control_set, ruleset_context_set = ruleset_controls(data)
+                controls.update(ruleset_control_set)
+                contexts.update(ruleset_context_set)
                 sources.append("rulesets")
             else:
                 errors.append("effective rules query must return a JSON list")
@@ -115,12 +128,14 @@ def audit_protection(name: str, branch: str, run: Runner) -> dict[str, object]:
         errors.append(detail(rules) or "effective rules query failed")
 
     missing = sorted(REQUIRED_PROTECTION - controls)
+    missing.extend(f"required_status_check:{context}" for context in sorted(required_contexts - contexts))
     if errors and (not sources or missing):
-        return {"status": "human_input", "controls": sorted(controls), "missing": missing, "detail": "\n".join(errors)}
+        return {"status": "human_input", "controls": sorted(controls), "status_checks": sorted(contexts), "missing": missing, "detail": "\n".join(errors)}
     return {
         "status": "protected" if not missing else "missing",
         "sources": sources,
         "controls": sorted(controls),
+        "status_checks": sorted(contexts),
         "missing": missing,
         **({"detail": "\n".join(errors)} if errors else {}),
     }
@@ -208,7 +223,13 @@ def audit_repository(entry: dict[str, object], contracts: list[dict[str, object]
     ):
         findings.append({"level": "drift", "check": "merge_strategy", "detail": "only squash merging with PR_TITLE is allowed"})
 
-    protection = audit_protection(name, expected_default, run)
+    required_contexts = entry.get("required_status_checks")
+    if not isinstance(required_contexts, list) or not required_contexts or not all(isinstance(item, str) and item for item in required_contexts):
+        findings.append({"level": "human_input", "check": "protection_contract", "detail": "required_status_checks must be a non-empty string list"})
+        context_set: set[str] = set()
+    else:
+        context_set = set(required_contexts)
+    protection = audit_protection(name, expected_default, context_set, run)
     result["branch_protection"] = protection
     if protection["status"] != "protected":
         level = "human_input" if protection["status"] == "human_input" else "drift"
@@ -285,6 +306,8 @@ def audit_exception(exception: dict[str, object], run: Runner = gh) -> dict[str,
     number = expiry.get("number")
     if not isinstance(repository, str) or not isinstance(number, int):
         return {**result, "status": "drift", "detail": "expiry repository and PR number are required"}
+    if repository != exception.get("repository"):
+        return {**result, "status": "drift", "detail": "expiry repository must match the excepted repository"}
     response = run(["api", f"repos/{repository}/pulls/{number}"])
     if response.returncode != 0:
         return {**result, "status": "human_input", "detail": detail(response) or "exception expiry query failed"}
@@ -293,6 +316,13 @@ def audit_exception(exception: dict[str, object], run: Runner = gh) -> dict[str,
         return {**result, "status": "human_input", "detail": error or "invalid exception expiry"}
     if data.get("state") != "open":
         return {**result, "status": "drift", "detail": f"exception expired when {repository}#{number} closed"}
+    if exception.get("kind") == "legacy_branch":
+        head = data.get("head")
+        if not isinstance(head, dict) or head.get("ref") != exception.get("value"):
+            return {**result, "status": "drift", "detail": "expiry PR head does not match the excepted legacy branch"}
+        head_repository = head.get("repo")
+        if not isinstance(head_repository, dict) or head_repository.get("full_name") != exception.get("repository"):
+            return {**result, "status": "drift", "detail": "expiry PR head repository does not match the exception"}
     return {**result, "status": "pass", "detail": f"active until {repository}#{number} closes"}
 
 

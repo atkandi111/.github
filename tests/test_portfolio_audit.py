@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import base64
+import hashlib
 import importlib.util
 import json
 import pathlib
@@ -27,7 +28,7 @@ def encoded_file(content: str) -> str:
 
 def valid_protection() -> dict[str, object]:
     return {
-        "required_status_checks": {"checks": [{"context": "ci"}]},
+        "required_status_checks": {"checks": [{"context": "dev-platform/deterministic-ci"}]},
         "required_pull_request_reviews": {"required_approving_review_count": 1},
         "allow_force_pushes": {"enabled": False},
         "allow_deletions": {"enabled": False},
@@ -81,15 +82,34 @@ def project_runner(fields: list[dict[str, object]]):
 
 
 def main() -> None:
-    entry = {"name": "example/client", "role": "client", "default_branch": "main", "managed": True}
-    contracts = [{"path": "AGENTS.md", "kind": "contains", "all": ["required marker"]}]
+    entry = {
+        "name": "example/client",
+        "role": "client",
+        "default_branch": "main",
+        "managed": True,
+        "required_status_checks": ["dev-platform/deterministic-ci"],
+    }
+    expected_content = "required marker\n"
+    contracts = [{
+        "path": "AGENTS.md",
+        "kind": "sha256",
+        "digest": "sha256:" + hashlib.sha256(expected_content.encode()).hexdigest(),
+    }]
 
     passed = AUDIT.audit_repository(entry, contracts, fake_repository_runner())
     assert passed["status"] == "pass"
 
     weak_protection = AUDIT.audit_repository(entry, contracts, fake_repository_runner(classic={}))
     assert weak_protection["status"] == "drift"
-    assert weak_protection["branch_protection"]["missing"] == sorted(AUDIT.REQUIRED_PROTECTION)
+    assert weak_protection["branch_protection"]["missing"] == (
+        sorted(AUDIT.REQUIRED_PROTECTION) + ["required_status_check:dev-platform/deterministic-ci"]
+    )
+
+    unrelated_check = valid_protection()
+    unrelated_check["required_status_checks"] = {"checks": [{"context": "lint"}]}
+    unrelated = AUDIT.audit_repository(entry, contracts, fake_repository_runner(classic=unrelated_check))
+    assert unrelated["status"] == "drift"
+    assert "required_status_check:dev-platform/deterministic-ci" in unrelated["branch_protection"]["missing"]
 
     bypass_merge = AUDIT.audit_repository(
         entry, contracts, fake_repository_runner(metadata_changes={"allow_rebase_merge": True})
@@ -111,14 +131,14 @@ def main() -> None:
         if endpoint.endswith("/protection") or "/rules/branches/" in endpoint:
             return completed(1, stderr="Upgrade to GitHub Pro or make this repository public (HTTP 403)")
         if "/contents/" in endpoint:
-            return completed(0, encoded_file("required marker\n"))
+            return completed(0, encoded_file(expected_content))
         raise AssertionError(args)
 
     blocked = AUDIT.audit_repository(entry, contracts, plan_blocked)
     assert blocked["status"] == "human_input" and blocked["branch_protection"]["status"] == "human_input"
 
     rules = [
-        {"type": "required_status_checks", "parameters": {"required_status_checks": [{"context": "ci"}]}},
+        {"type": "required_status_checks", "parameters": {"required_status_checks": [{"context": "dev-platform/deterministic-ci"}]}},
         {"type": "pull_request", "parameters": {"required_approving_review_count": 1}},
         {"type": "non_fast_forward"},
         {"type": "deletion"},
@@ -150,18 +170,29 @@ def main() -> None:
     exception = {
         "repository": "example/client",
         "kind": "legacy_branch",
+        "value": "agent/chore-lightweight-change-management",
         "owner": "maintainer",
         "expires": {"kind": "pull_request_closed", "repository": "example/client", "number": 55},
     }
 
-    def exception_state(state: str):
-        return lambda args: completed(0, json.dumps({"state": state}))
+    def exception_state(state: str, branch: str = "agent/chore-lightweight-change-management"):
+        return lambda args: completed(0, json.dumps({
+            "state": state,
+            "head": {"ref": branch, "repo": {"full_name": "example/client"}},
+        }))
 
     active = AUDIT.audit_exception(exception, exception_state("open"))
     expired = AUDIT.audit_exception(exception, exception_state("closed"))
     assert active["status"] == "pass" and expired["status"] == "drift"
     malformed = AUDIT.audit_exception({**exception, "expires": "PR #55 closes"}, exception_state("open"))
     assert malformed["status"] == "drift"
+    wrong_repository = {
+        **exception,
+        "expires": {"kind": "pull_request_closed", "repository": "example/other", "number": 55},
+    }
+    assert AUDIT.audit_exception(wrong_repository, exception_state("open"))["status"] == "drift"
+    wrong_branch = AUDIT.audit_exception(exception, exception_state("open", "feat/unrelated"))
+    assert wrong_branch["status"] == "drift"
 
     unmanaged = {**entry, "managed": False}
     visible = AUDIT.unmanaged_repository(unmanaged, [])
@@ -172,7 +203,11 @@ def main() -> None:
     inventory = json.loads((ROOT / "governance/repositories.json").read_text())
     assert len(inventory["repositories"]) == 5
     assert inventory["exceptions"][0]["expires"]["number"] == 55
-    assert all(isinstance(item, dict) and item.get("kind") for items in inventory["required_files"].values() for item in items)
+    assert all(
+        isinstance(item, dict) and item.get("kind") in {"overlay", "sha256"}
+        for items in inventory["required_files"].values()
+        for item in items
+    )
     print("ok: portfolio audit")
 
 
