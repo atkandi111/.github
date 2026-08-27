@@ -17,6 +17,8 @@ CLIENT_SETUP = ROOT / "client-setup"
 AGENT = (ROOT / ".github/workflows/agent.yml").read_text()
 CI = (ROOT / ".github/workflows/ci.yml").read_text()
 GOVERNANCE = (ROOT / ".github/workflows/governance.yml").read_text()
+PLATFORM_CHECKS = (ROOT / ".github/workflows/platform-checks.yml").read_text()
+PLATFORM_GOVERNANCE = (ROOT / ".github/workflows/platform-governance.yml").read_text()
 CLIENT_AGENT = (ROOT / "templates/client/.github/workflows/agent.yml").read_text()
 CLIENT_CI = (ROOT / "templates/client/.github/workflows/ci.yml").read_text()
 CLIENT_GOVERNANCE = (ROOT / "templates/client/.github/workflows/governance.yml").read_text()
@@ -30,7 +32,10 @@ README = (ROOT / "README.md").read_text()
 SECURITY = (ROOT / "docs/security.md").read_text()
 RELEASE = (ROOT / "docs/release.md").read_text()
 ALL_DOCS = "\n".join((README, SECURITY, RELEASE))
-ALL_WORKFLOWS = "\n".join((AGENT, CI, GOVERNANCE, CLIENT_AGENT, CLIENT_CI, CLIENT_GOVERNANCE))
+ALL_WORKFLOWS = "\n".join((
+    AGENT, CI, GOVERNANCE, PLATFORM_CHECKS, PLATFORM_GOVERNANCE,
+    CLIENT_AGENT, CLIENT_CI, CLIENT_GOVERNANCE,
+))
 
 
 def check(condition: bool, message: str) -> None:
@@ -165,7 +170,7 @@ printf '{"labels":["%s"]}\\n' "$4"
 
 
 def test_action_pins() -> None:
-    for workflow in (AGENT, CI, GOVERNANCE):
+    for workflow in (AGENT, CI, GOVERNANCE, PLATFORM_CHECKS, PLATFORM_GOVERNANCE):
         for reference in re.findall(r"uses:\s*([^\s#]+)", workflow):
             if reference.startswith(("actions/", "openai/")):
                 check(
@@ -433,6 +438,10 @@ def test_naming_policy() -> None:
     check("uses: YOUR_ORG/dev-platform/.github/workflows/governance.yml@main" in CLIENT_GOVERNANCE, "thin governance caller missing")
     check("default: false" in GOVERNANCE and "inputs.enforce" in GOVERNANCE, "naming enforcement must default safe-off")
     check("GOVERNANCE_NAMING_ENFORCED == 'true'" in CLIENT_GOVERNANCE, "client naming activation gate missing")
+    check("name: Client governance" in CLIENT_GOVERNANCE, "client governance caller must emit a stable check context")
+    check("name: Platform tests" in PLATFORM_CHECKS, "platform test check producer missing")
+    check("name: Platform governance" in PLATFORM_GOVERNANCE, "platform governance check producer missing")
+    check("uses: ./.github/workflows/governance.yml" in PLATFORM_GOVERNANCE, "platform governance self-caller missing")
 
 
 def test_protected_path_code() -> None:

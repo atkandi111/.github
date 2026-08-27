@@ -6,7 +6,8 @@
 .idea/
 .vscode/
 node_modules/
+__pycache__/
+*.pyc
 dist/
 coverage/
 tmp/
-
