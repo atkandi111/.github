@@ -1,0 +1,62 @@
+name: Change request
+description: Propose one bounded product, operational, infrastructure, or documentation change.
+title: ""
+labels: []
+body:
+  - type: markdown
+    attributes:
+      value: Keep this comfortable to review. Describe the outcome and confirmed constraints; implementation details can develop in the pull request.
+
+  - type: textarea
+    id: summary
+    attributes:
+      label: Summary
+      description: What should improve, and why does it matter?
+      placeholder: In a few sentences, describe the problem or opportunity and the reason for changing it.
+    validations:
+      required: true
+
+  - type: textarea
+    id: outcome
+    attributes:
+      label: Desired outcome
+      description: List observable conditions that should be true when this is complete.
+      placeholder: |
+        - [ ] ...
+        - [ ] ...
+    validations:
+      required: true
+
+  - type: textarea
+    id: affected
+    attributes:
+      label: Who or what is affected?
+      description: Name the user, operator, client, service, or repository. Write "Internal only" when appropriate.
+    validations:
+      required: true
+
+  - type: textarea
+    id: constraints
+    attributes:
+      label: Constraints and known concerns
+      description: Optional confirmed design constraints, production sensitivity, data concerns, or decisions.
+    validations:
+      required: false
+
+  - type: textarea
+    id: out-of-scope
+    attributes:
+      label: Out of scope
+      description: What should this change deliberately avoid?
+      placeholder: "- ..."
+    validations:
+      required: true
+
+  - type: textarea
+    id: dependencies
+    attributes:
+      label: Dependencies
+      description: Enter an exact line such as "Depends on: #14, #19", name an external decision, or write "None".
+      placeholder: None
+    validations:
+      required: true
