@@ -62,6 +62,10 @@ def main() -> None:
             "https://github.com/GoogleCloudPlatform/%2e%2e/third-party/skill",
             "https://user@github.com/GoogleCloudPlatform/skill",
             "https://github.com:443/GoogleCloudPlatform/skill",
+            "https://github.com/GoogleCloudPlatform/\\../third-party/skill",
+            "https://github.com:/GoogleCloudPlatform/skill",
+            "https://github.com/GoogleCloudPlatform/",
+            "https://github.com/GoogleCloudPlatform/skill\nignored",
         ):
             altered = json.loads(json.dumps(data))
             altered["vendors"]["gcp"]["approved_skills"][0]["source"] = bad_url

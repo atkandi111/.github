@@ -51,8 +51,13 @@ def load_json(path: pathlib.Path) -> tuple[dict[str, object] | None, list[str]]:
     return value, []
 
 
-def canonical_vendor_url(value: object, prefixes: list[str]) -> bool:
-    if not isinstance(value, str) or "%" in value:
+def canonical_vendor_url(value: object, prefixes: list[str], *, require_repository: bool = False) -> bool:
+    if (
+        not isinstance(value, str)
+        or "%" in value
+        or "\\" in value
+        or any(ord(character) < 32 or ord(character) == 127 for character in value)
+    ):
         return False
     try:
         parsed = urlsplit(value)
@@ -65,8 +70,14 @@ def canonical_vendor_url(value: object, prefixes: list[str]) -> bool:
         return False
     for prefix in prefixes:
         trusted = urlsplit(prefix)
-        if parsed.hostname.lower() == trusted.hostname.lower() and parsed.path.startswith(trusted.path):
-            return True
+        if parsed.netloc.lower() != trusted.netloc.lower() or not parsed.path.startswith(trusted.path):
+            continue
+        if require_repository:
+            remainder = parsed.path[len(trusted.path):]
+            repository = remainder.split("/", 1)[0]
+            if not re.fullmatch(r"[A-Za-z0-9_.-]+", repository):
+                continue
+        return True
     return False
 
 
@@ -111,7 +122,7 @@ def validate_registry(path: pathlib.Path, today: dt.date | None = None) -> tuple
                 errors.append(f"{vendor_name}/{name}: publisher is not vendor-approved")
             if not isinstance(skill["package_id"], str) or not skill["package_id"].startswith(f"{skill['publisher']}/"):
                 errors.append(f"{vendor_name}/{name}: package_id must be namespaced by the approved publisher")
-            if not canonical_vendor_url(skill["source"], root["sources"]):
+            if not canonical_vendor_url(skill["source"], root["sources"], require_repository=True):
                 errors.append(f"{vendor_name}/{name}: source is not a canonical vendor repository URL")
             if not canonical_vendor_url(skill["evidence"], root["evidence"]):
                 errors.append(f"{vendor_name}/{name}: evidence is outside canonical vendor sources")
