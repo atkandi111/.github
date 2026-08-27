@@ -1,4 +1,4 @@
-name: Governance
+name: Platform governance
 
 on:
   issues:
@@ -11,8 +11,8 @@ permissions:
 
 jobs:
   validate:
-    name: Client governance
-    uses: YOUR_ORG/dev-platform/.github/workflows/governance.yml@main
+    name: Platform governance
+    uses: ./.github/workflows/governance.yml
     with:
       record_kind: ${{ github.event_name == 'issues' && 'issue' || 'pull_request' }}
       record_title: ${{ github.event_name == 'issues' && github.event.issue.title || github.event.pull_request.title }}
