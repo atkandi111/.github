@@ -157,7 +157,8 @@ check_client() {
   if [[ $failed == false ]]; then
     if grep -En 'YOUR_ORG/dev-platform|DEV_PLATFORM_VERSION' \
       "$target/.github/workflows/agent.yml" \
-      "$target/.github/workflows/ci.yml"; then
+      "$target/.github/workflows/ci.yml" \
+      "$target/.github/workflows/governance.yml"; then
       echo "workflow callers contain an incomplete platform reference" >&2
       failed=true
     fi
@@ -178,16 +179,22 @@ check_client() {
       failed=true
     fi
 
-    local agent_ref ci_ref agent_repository ci_repository agent_version ci_version
+    local agent_ref ci_ref governance_ref agent_repository ci_repository governance_repository agent_version ci_version governance_version
     agent_ref=$(sed -nE 's|^[[:space:]]*uses:[[:space:]]+([^[:space:]]+/\.github/workflows/agent\.yml@[^[:space:]]+).*$|\1|p' \
       "$target/.github/workflows/agent.yml")
     ci_ref=$(sed -nE 's|^[[:space:]]*uses:[[:space:]]+([^[:space:]]+/\.github/workflows/ci\.yml@[^[:space:]]+).*$|\1|p' \
       "$target/.github/workflows/ci.yml")
+    governance_ref=$(sed -nE 's|^[[:space:]]*uses:[[:space:]]+([^[:space:]]+/\.github/workflows/governance\.yml@[^[:space:]]+).*$|\1|p' \
+      "$target/.github/workflows/governance.yml")
     agent_repository=${agent_ref%%/.github/workflows/*}
     ci_repository=${ci_ref%%/.github/workflows/*}
+    governance_repository=${governance_ref%%/.github/workflows/*}
     agent_version=${agent_ref##*@}
     ci_version=${ci_ref##*@}
-    if [[ -z $agent_ref || -z $ci_ref || $agent_repository != "$ci_repository" || $agent_version != "$ci_version" ]]; then
+    governance_version=${governance_ref##*@}
+    if [[ -z $agent_ref || -z $ci_ref || -z $governance_ref \
+      || $agent_repository != "$ci_repository" || $agent_repository != "$governance_repository" \
+      || $agent_version != "$ci_version" || $agent_version != "$governance_version" ]]; then
       echo "workflow callers must use the same platform repository and version" >&2
       failed=true
     elif [[ $mode == canary ]]; then

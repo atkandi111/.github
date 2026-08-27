@@ -483,9 +483,14 @@ def test_client_setup() -> None:
             ".github/workflows/governance.yml",
         ):
             check((target / relative).is_file(), f"client install missed {relative}")
-        callers = (target / ".github/workflows/agent.yml").read_text() + (target / ".github/workflows/ci.yml").read_text()
+        callers = "\n".join((
+            (target / ".github/workflows/agent.yml").read_text(),
+            (target / ".github/workflows/ci.yml").read_text(),
+            (target / ".github/workflows/governance.yml").read_text(),
+        ))
         check("example/dev-platform/.github/workflows/agent.yml@main" in callers, "agent main reference missing")
         check("example/dev-platform/.github/workflows/ci.yml@main" in callers, "CI main reference missing")
+        check("example/dev-platform/.github/workflows/governance.yml@main" in callers, "governance main reference missing")
 
         collision = subprocess.run(
             [str(CLIENT_SETUP), "install", str(target), "example/dev-platform"],
@@ -559,6 +564,22 @@ def test_client_setup() -> None:
         check(wrong_secret.returncode != 0, "client with the wrong OpenAI secret mapping should fail readiness")
         agent_caller.write_text(original_agent)
 
+        governance_caller = target / ".github/workflows/governance.yml"
+        original_governance = governance_caller.read_text()
+        governance_caller.write_text(original_governance.replace("example/dev-platform", "YOUR_ORG/dev-platform"))
+        unresolved_governance = subprocess.run(
+            [str(CLIENT_SETUP), "check", str(target)], text=True,
+            stdout=subprocess.PIPE, stderr=subprocess.STDOUT, check=False,
+        )
+        check(unresolved_governance.returncode != 0, "unresolved governance caller should fail readiness")
+        governance_caller.write_text(original_governance.replace("example/dev-platform", "wrong/platform"))
+        wrong_governance_repository = subprocess.run(
+            [str(CLIENT_SETUP), "check", str(target)], text=True,
+            stdout=subprocess.PIPE, stderr=subprocess.STDOUT, check=False,
+        )
+        check(wrong_governance_repository.returncode != 0, "mismatched governance repository should fail readiness")
+        governance_caller.write_text(original_governance)
+
         ci_caller = target / ".github/workflows/ci.yml"
         ci_caller.write_text(
             ci_caller.read_text()
@@ -596,8 +617,12 @@ def test_client_setup() -> None:
             check=False,
         )
         check(canary_install.returncode == 0, f"canary install failed: {canary_install.stdout}")
-        canary_callers = (canary / ".github/workflows/agent.yml").read_text() + (canary / ".github/workflows/ci.yml").read_text()
-        check(canary_callers.count("@" + candidate_sha) == 2, "canary callers must pin the same candidate SHA")
+        canary_callers = "\n".join((
+            (canary / ".github/workflows/agent.yml").read_text(),
+            (canary / ".github/workflows/ci.yml").read_text(),
+            (canary / ".github/workflows/governance.yml").read_text(),
+        ))
+        check(canary_callers.count("@" + candidate_sha) == 3, "canary callers must pin the same candidate SHA")
         (canary / "PROJECT.md").write_text("# Project\n\nA confirmed canary product contract.\n")
         (canary / "AGENTS.md").write_text("# Agent instructions\n\nRun the canary checks.\n")
         canary_ready = subprocess.run(
@@ -608,6 +633,15 @@ def test_client_setup() -> None:
             check=False,
         )
         check(canary_ready.returncode == 0, f"candidate-pinned canary should pass: {canary_ready.stdout}")
+        canary_governance = canary / ".github/workflows/governance.yml"
+        original_canary_governance = canary_governance.read_text()
+        canary_governance.write_text(original_canary_governance.replace("@" + candidate_sha, "@" + "b" * 40))
+        mismatched_canary_governance = subprocess.run(
+            [str(CLIENT_SETUP), "check-canary", str(canary)], text=True,
+            stdout=subprocess.PIPE, stderr=subprocess.STDOUT, check=False,
+        )
+        check(mismatched_canary_governance.returncode != 0, "canary governance caller must share the candidate SHA")
+        canary_governance.write_text(original_canary_governance)
         normal_check = subprocess.run(
             [str(CLIENT_SETUP), "check", str(canary)],
             text=True,
