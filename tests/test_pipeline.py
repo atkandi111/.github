@@ -19,6 +19,8 @@ CI = (ROOT / ".github/workflows/ci.yml").read_text()
 CLIENT_AGENT = (ROOT / "templates/client/.github/workflows/agent.yml").read_text()
 CLIENT_CI = (ROOT / "templates/client/.github/workflows/ci.yml").read_text()
 CLIENT_AGENTS = (ROOT / "templates/client/AGENTS.md").read_text()
+CENTRAL_AGENTS = (ROOT / "governance/AGENTS.md").read_text()
+AGENT_POLICY_DOCS = (ROOT / "docs/agent-policy.md").read_text()
 ISSUE_FORM = (ROOT / "templates/client/.github/ISSUE_TEMPLATE/agent-task.yml").read_text()
 README = (ROOT / "README.md").read_text()
 SECURITY = (ROOT / "docs/security.md").read_text()
@@ -320,6 +322,21 @@ def test_contracts() -> None:
     check("service account and key for each connected repository" in SECURITY, "per-repository credential boundary missing")
 
 
+def test_central_agent_policy() -> None:
+    check(len(CENTRAL_AGENTS.encode()) <= 4096, "central policy exceeds 4 KiB")
+    check(len(CLIENT_AGENTS.encode()) <= 4096, "root overlay template exceeds 4 KiB")
+    check(len(CENTRAL_AGENTS.encode()) + len(CLIENT_AGENTS.encode()) <= 8192, "effective template context exceeds 8 KiB")
+    start = "            <central_policy>\n"
+    end = "            </central_policy>"
+    check(AGENT.count(start) == 1 and AGENT.count(end) == 1, "workflow central policy markers must be unique")
+    rendered = AGENT.split(start, 1)[1].split(end, 1)[0]
+    check(textwrap.dedent(rendered).rstrip() == CENTRAL_AGENTS.rstrip(), "managed-run policy differs from canonical source")
+    check("verified vendor-official skill when one is available" in CENTRAL_AGENTS, "official-skill preference missing")
+    check("If none is available, continue normally" in CENTRAL_AGENTS, "official-skill fallback is too strict")
+    check("must restart" in AGENT_POLICY_DOCS, "running-session restart behavior is undocumented")
+    check("Unreviewed source edits do not propagate" in AGENT_POLICY_DOCS, "reviewed promotion boundary is undocumented")
+
+
 def test_protected_path_code() -> None:
     blocks = embedded_python_blocks(AGENT) + embedded_python_blocks(CI)
     check(len(blocks) == 2, f"expected two protected-path implementations, found {len(blocks)}")
@@ -576,6 +593,7 @@ def main() -> None:
         test_privilege_and_trigger_boundaries,
         test_status_writer_job_isolation,
         test_contracts,
+        test_central_agent_policy,
         test_protected_path_code,
         test_immutable_revision_guard,
         test_ci_failure_propagation,
