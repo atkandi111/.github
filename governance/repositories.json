@@ -3,29 +3,34 @@
   "project": {
     "owner": "atkandi111",
     "number": 2,
-    "name": "Atkandi Portfolio"
+    "name": "Atkandi Portfolio",
+    "fields": {
+      "Status": {"type": "ProjectV2SingleSelectField", "options": ["Todo", "In Progress", "Review", "Done"]},
+      "Priority": {"type": "ProjectV2SingleSelectField", "options": ["P0", "P1", "P2", "P3"]},
+      "Waiting On": {"type": "ProjectV2SingleSelectField", "options": ["Me", "Client"]}
+    }
   },
   "required_files": {
     "governance": [
-      "AGENTS.md",
-      ".github/ISSUE_TEMPLATE/agent-task.yml",
-      ".github/ISSUE_TEMPLATE/change-request.yml",
-      ".github/ISSUE_TEMPLATE/config.yml",
-      ".github/pull_request_template.md",
-      ".github/workflows/agent.yml",
-      ".github/workflows/ci.yml",
-      ".github/workflows/governance.yml"
+      {"path": "AGENTS.md", "kind": "overlay", "max_bytes": 4096},
+      {"path": ".github/ISSUE_TEMPLATE/agent-task.yml", "kind": "contains", "all": ["name: Agent task", "label: Goal", "label: Acceptance criteria"]},
+      {"path": ".github/ISSUE_TEMPLATE/change-request.yml", "kind": "contains", "all": ["name: Change request", "label: Outcome", "Keep Status and Priority in the Project."]},
+      {"path": ".github/ISSUE_TEMPLATE/config.yml", "kind": "contains", "all": ["blank_issues_enabled: false"]},
+      {"path": ".github/pull_request_template.md", "kind": "contains", "all": ["## Summary", "## Linked issue", "## Verification", "## Risk and rollback"]},
+      {"path": ".github/workflows/agent.yml", "kind": "contains", "all": ["name: Reusable agent implementation", "workflow_call:"]},
+      {"path": ".github/workflows/ci.yml", "kind": "contains", "all": ["name: Reusable deterministic CI", "workflow_call:"]},
+      {"path": ".github/workflows/governance.yml", "kind": "contains", "all": ["name: Reusable governance", "# BEGIN GENERATED NAMING VALIDATOR"]}
     ],
     "client": [
-      "AGENTS.md",
-      "PROJECT.md",
-      ".github/ISSUE_TEMPLATE/agent-task.yml",
-      ".github/ISSUE_TEMPLATE/change-request.yml",
-      ".github/ISSUE_TEMPLATE/config.yml",
-      ".github/pull_request_template.md",
-      ".github/workflows/agent.yml",
-      ".github/workflows/ci.yml",
-      ".github/workflows/governance.yml"
+      {"path": "AGENTS.md", "kind": "overlay", "max_bytes": 4096},
+      {"path": "PROJECT.md", "kind": "overlay", "max_bytes": 8192},
+      {"path": ".github/ISSUE_TEMPLATE/agent-task.yml", "kind": "contains", "all": ["name: Agent task", "label: Goal", "label: Acceptance criteria"]},
+      {"path": ".github/ISSUE_TEMPLATE/change-request.yml", "kind": "contains", "all": ["name: Change request", "label: Outcome", "Keep Status and Priority in the Project."]},
+      {"path": ".github/ISSUE_TEMPLATE/config.yml", "kind": "contains", "all": ["blank_issues_enabled: false"]},
+      {"path": ".github/pull_request_template.md", "kind": "contains", "all": ["## Summary", "## Linked issue", "## Verification", "## Risk and rollback"]},
+      {"path": ".github/workflows/agent.yml", "kind": "contains", "all": ["uses: atkandi111/dev-platform/.github/workflows/agent.yml@main"]},
+      {"path": ".github/workflows/ci.yml", "kind": "contains", "all": ["uses: atkandi111/dev-platform/.github/workflows/ci.yml@main"]},
+      {"path": ".github/workflows/governance.yml", "kind": "contains", "all": ["uses: atkandi111/dev-platform/.github/workflows/governance.yml@main"]}
     ]
   },
   "repositories": [
@@ -41,7 +46,11 @@
       "kind": "legacy_branch",
       "value": "agent/chore-lightweight-change-management",
       "owner": "atkandi111",
-      "expires_when": "PR #55 closes",
+      "expires": {
+        "kind": "pull_request_closed",
+        "repository": "atkandi111/demandph-website",
+        "number": 55
+      },
       "reason": "Reuse the existing template canary instead of opening a duplicate rollout PR."
     }
   ]
