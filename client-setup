@@ -154,7 +154,44 @@ check_client() {
     fi
   done
 
+  if [[ -L "$target/AGENTS.md" ]]; then
+    echo "repository AGENTS.md must not be a symlink" >&2
+    failed=true
+  fi
+
   if [[ $failed == false ]]; then
+    local central_bytes root_bytes effective_bytes nested
+    central_bytes=$(wc -c < "$platform_root/governance/AGENTS.md")
+    root_bytes=$(wc -c < "$target/AGENTS.md")
+    effective_bytes=$((central_bytes + root_bytes))
+    if (( central_bytes > 4096 )); then
+      echo "central agent policy exceeds 4 KiB: $central_bytes bytes" >&2
+      failed=true
+    fi
+    if (( root_bytes > 4096 )); then
+      echo "repository AGENTS.md exceeds 4 KiB: $root_bytes bytes" >&2
+      failed=true
+    fi
+    if (( effective_bytes > 8192 )); then
+      echo "effective central-plus-root instructions exceed 8 KiB: $effective_bytes bytes" >&2
+      failed=true
+    fi
+    while IFS= read -r -d '' nested; do
+      if [[ $nested == "$target/AGENTS.md" ]]; then
+        continue
+      fi
+      if [[ -L $nested ]]; then
+        echo "nested AGENTS.md must not be a symlink: ${nested#"$target/"}" >&2
+        failed=true
+      elif [[ ! -f $nested ]]; then
+        echo "nested AGENTS.md must be a regular file: ${nested#"$target/"}" >&2
+        failed=true
+      elif (( $(wc -c < "$nested") > 2048 )); then
+        echo "nested AGENTS.md exceeds 2 KiB: ${nested#"$target/"}" >&2
+        failed=true
+      fi
+    done < <(find "$target" -path "$target/.git" -prune -o -name AGENTS.md -print0)
+
     if grep -En 'YOUR_ORG/dev-platform|DEV_PLATFORM_VERSION' \
       "$target/.github/workflows/agent.yml" \
       "$target/.github/workflows/ci.yml" \
