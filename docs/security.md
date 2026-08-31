@@ -2,7 +2,7 @@
 
 ## Authorization
 
-The executable object is a published implementation Issue in one repository. The owner's reviewed Issue text and `@codex` instruction authorize one repository-scoped Codex Cloud task, normally producing one draft pull request. A parent outcome Issue and the portfolio GitHub Project provide coordination and visibility only.
+The executable object is a published Implementation Issue in one repository. The owner's reviewed Issue text and `@codex` instruction authorize one repository-scoped Codex Cloud task, normally producing one draft pull request. A Planning/deferred parent without that instruction and the portfolio GitHub Project provide coordination and visibility only.
 
 Codex Cloud's GitHub installation, user authorization, repository selection, and platform controls replace the former custom authorized-actor/label/kill-switch/attempt/concurrency guard. Do not recreate those controls inside this repository unless a demonstrated Cloud limitation makes one strictly necessary.
 

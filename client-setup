@@ -7,9 +7,8 @@ template_root="$platform_root/templates/client"
 client_files=(
   AGENTS.md
   PROJECT.md
-  .github/ISSUE_TEMPLATE/change-request.yml
-  .github/ISSUE_TEMPLATE/implementation.yml
-  .github/ISSUE_TEMPLATE/outcome.yml
+  .github/ISSUE_TEMPLATE/01-implementation.yml
+  .github/ISSUE_TEMPLATE/02-planning.yml
   .github/ISSUE_TEMPLATE/config.yml
   .github/pull_request_template.md
   .github/workflows/ci.yml
@@ -116,7 +115,7 @@ check_client() {
     echo "workflow callers do not use the expected release reference: $expected" >&2
     failed=true
   fi
-  grep -Fq '@codex implement this issue' "$target/.github/ISSUE_TEMPLATE/implementation.yml" || {
+  grep -Fq '@codex implement this issue' "$target/.github/ISSUE_TEMPLATE/01-implementation.yml" || {
     echo 'implementation Issue is missing its queue instruction' >&2
     failed=true
   }

@@ -5,7 +5,7 @@ This is the shared default for Atkandi repositories. Repository-local `AGENTS.md
 ## Authorization and scope
 
 - An executable implementation Issue authorizes work only in the repository where it was published and normally results in one draft pull request.
-- A parent or portfolio outcome Issue is coordination-only. Do not implement it directly; follow a repository-specific implementation Issue instead.
+- A planning/deferred parent is coordination-only. Do not implement it directly; follow a repository-specific Implementation Issue instead.
 - Never discover or modify another repository, request broader access, or create cross-repository work on your own. If another repository must change, report the need for a separately authorized Issue there.
 - Stay within the Issue's outcome, acceptance criteria, constraints, and explicit out-of-scope boundaries. Ask for human direction when missing product intent would materially change the result.
 

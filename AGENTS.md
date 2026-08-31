@@ -12,7 +12,7 @@ This repository is the reviewed source for portfolio-wide Codex guidance, reusab
 ## Trust boundaries
 
 - A published implementation Issue authorizes one Codex task in that repository and normally one draft pull request.
-- A parent outcome Issue coordinates repository-specific implementation Issues; it never authorizes a task itself.
+- A planning/deferred parent may coordinate repository-specific implementation Issues; without an explicit `@codex` instruction it never authorizes a task itself.
 - Codex Cloud may edit only the repository it was started in. It receives no portfolio-wide publishing token and no persistent/shared/production infrastructure credential.
 - Pull-request CI is deterministic and credential-free. Persistent infrastructure execution and deployment remain separate post-merge workflows with human approval and short-lived credentials where available.
 - The portfolio GitHub Project is for status and visibility, not execution authority.

@@ -5,8 +5,8 @@
 ## Lean operating model
 
 1. Draft and review work before publishing it.
-2. Publish an **Implementation issue** in the repository that will change. Its `@codex` instruction starts one repository-scoped task and normally produces one draft pull request.
-3. For a cross-repository outcome, create a coordination-only **Portfolio outcome** Issue and link one implementation Issue per affected repository.
+2. Normally publish an **Implementation issue** in the repository that will change. Its `@codex` instruction starts one repository-scoped task and normally produces one draft pull request.
+3. Use **Planning / deferred issue** only when publication must not start Codex. A coordination-only parent can link separately authorized Implementation subissues in each affected repository.
 4. Codex implements in its authorized repository and completes the pull request's human-readable **Merge Brief**.
 5. Central reusable CI and optional naming governance verify the pull request without deployment credentials.
 6. A human reviews and merges. Separate trusted post-merge workflows perform deployments or persistent infrastructure changes.

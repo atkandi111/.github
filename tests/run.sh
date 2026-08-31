@@ -11,13 +11,11 @@ ruby -e 'require "yaml"; ARGV.each { |file| YAML.parse_file(file); puts "yaml ok
   .github/workflows/platform-governance.yml \
   templates/client/.github/workflows/ci.yml \
   templates/client/.github/workflows/governance.yml \
-  .github/ISSUE_TEMPLATE/change-request.yml \
-  .github/ISSUE_TEMPLATE/implementation.yml \
-  .github/ISSUE_TEMPLATE/outcome.yml \
+  .github/ISSUE_TEMPLATE/01-implementation.yml \
+  .github/ISSUE_TEMPLATE/02-planning.yml \
   .github/ISSUE_TEMPLATE/config.yml \
-  templates/client/.github/ISSUE_TEMPLATE/change-request.yml \
-  templates/client/.github/ISSUE_TEMPLATE/implementation.yml \
-  templates/client/.github/ISSUE_TEMPLATE/outcome.yml \
+  templates/client/.github/ISSUE_TEMPLATE/01-implementation.yml \
+  templates/client/.github/ISSUE_TEMPLATE/02-planning.yml \
   templates/client/.github/ISSUE_TEMPLATE/config.yml
 
 python3 tests/test_pipeline.py

@@ -1,5 +1,5 @@
 name: Implementation issue
-description: Authorize one Codex implementation in this repository.
+description: Publish and immediately queue one Codex implementation in this repository.
 title: ""
 labels: []
 body:
@@ -8,7 +8,7 @@ body:
       value: |
         @codex implement this issue in this repository. Open one draft pull request and complete its Merge Brief.
 
-        Publishing this Issue is the queue action. Do not use this form for a cross-repository outcome; create one implementation Issue per repository instead.
+        Publishing this Issue is the queue action. For cross-repository work, create one separately authorized Implementation Issue per repository. A parent that only coordinates subissues must use Planning / deferred instead.
   - type: textarea
     id: outcome
     attributes:
@@ -29,7 +29,6 @@ body:
     attributes:
       label: Constraints and confirmed decisions
       description: Record relevant product, design, technical, or compatibility decisions.
-      placeholder: "- ..."
     validations:
       required: false
   - type: textarea
@@ -45,13 +44,12 @@ body:
     attributes:
       label: Expected validation
       description: Commands, checks, or manual evidence expected before review.
-      placeholder: "- ..."
     validations:
       required: false
   - type: input
     id: parent
     attributes:
-      label: Parent outcome Issue
-      description: Optional link when this is one repository-specific part of a larger outcome.
+      label: Parent Issue
+      description: Optional link when this is part of a larger outcome.
     validations:
       required: false

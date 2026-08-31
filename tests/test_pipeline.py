@@ -29,25 +29,26 @@ def test_removed_custom_runtime() -> None:
         and ".git" not in path.parts
         and "tests" not in path.parts
         and path.name != "client-setup"
+        and path != ROOT / "docs/transition.md"
     )
     for obsolete in ("OPENAI_API_KEY", "AGENT_PIPELINE_ENABLED", "status_pending", "issue/<number>-attempt"):
         require(obsolete not in corpus, f"obsolete runtime contract remains: {obsolete}")
 
 
 def test_issue_and_handoff_contract() -> None:
-    implementation = read("templates/client/.github/ISSUE_TEMPLATE/implementation.yml")
-    outcome = read("templates/client/.github/ISSUE_TEMPLATE/outcome.yml")
+    implementation = read("templates/client/.github/ISSUE_TEMPLATE/01-implementation.yml")
+    planning = read("templates/client/.github/ISSUE_TEMPLATE/02-planning.yml")
     brief = read("templates/client/.github/pull_request_template.md")
     require("@codex implement this issue" in implementation, "implementation Issue is not the queue action")
     require("one draft pull request" in implementation, "one-Issue/one-PR contract missing")
-    require("coordination object only" in outcome, "parent outcome boundary missing")
+    require("does not authorize or start Codex" in planning, "planning opt-out boundary missing")
     for heading in ("Outcome", "Acceptance evidence", "Validation", "Review focus", "Risk and rollback"):
         require(heading in brief, f"Merge Brief is missing {heading}")
     require(
-        read(".github/ISSUE_TEMPLATE/implementation.yml") == implementation,
+        read(".github/ISSUE_TEMPLATE/01-implementation.yml") == implementation,
         "implementation Issue copies drifted",
     )
-    require(read(".github/ISSUE_TEMPLATE/outcome.yml") == outcome, "outcome Issue copies drifted")
+    require(read(".github/ISSUE_TEMPLATE/02-planning.yml") == planning, "planning Issue copies drifted")
     require(read(".github/pull_request_template.md") == brief, "Merge Brief copies drifted")
 
 

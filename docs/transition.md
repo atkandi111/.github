@@ -20,15 +20,15 @@ This runbook assumes the former custom pipeline has no production users. Keep ex
 ## Existing Issues
 
 - Do not bulk-edit or trigger open Issues.
-- Existing backlog and parent/outcome Issues remain coordination records. They never become executable merely because they are in the portfolio Project or carry an old label.
+- Existing backlog and planning-parent Issues remain coordination records. They never become executable merely because they are in the portfolio Project or carry an old label.
 - When an existing repository Issue is ready to execute, confirm that it has an intended outcome, acceptance criteria, constraints, and out-of-scope section, then add one `@codex implement this issue...` instruction. That explicit action puts it in the queue.
-- A cross-repository Issue should become a parent outcome with one separately authorized implementation Issue in each affected repository. Link them with subissues or checklist links.
+- Cross-repository work needs one separately authorized Implementation Issue in each affected repository. A parent that only coordinates them remains Planning/deferred; a parent that itself authorizes repository work may be an Implementation Issue.
 
 ## New Issues
 
-- Use **Implementation issue** when publishing should immediately enqueue one repository-scoped Codex task and normally one draft PR.
-- Use **Backlog or human change** when publication should not start Codex.
-- Use **Portfolio outcome** only for coordination across repositories. It never includes an execution mention.
+- Use **Implementation issue** by default: publishing immediately enqueues one repository-scoped Codex task and normally one draft PR.
+- Use **Planning / deferred issue** only when publication should not start Codex, including a coordination-only parent.
+- Labels may communicate status but never grant or revoke execution authority.
 - Keep status and priority in the existing portfolio GitHub Project. Project fields do not grant authority.
 
 ## Rollback
