@@ -9,26 +9,6 @@ on:
       record_title:
         required: true
         type: string
-      base_ref:
-        required: false
-        default: main
-        type: string
-      head_ref:
-        required: false
-        default: ""
-        type: string
-      head_branch:
-        required: false
-        default: ""
-        type: string
-      automation_prefixes:
-        required: false
-        default: "dependabot/"
-        type: string
-      legacy_branches:
-        required: false
-        default: ""
-        type: string
       enforce:
         required: false
         default: false
@@ -36,52 +16,32 @@ on:
 
 jobs:
   validate:
-    name: Validate governance naming
+    name: Validate naming
     runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions:
       contents: read
     steps:
-      - name: Check out exact proposed revision
-        if: inputs.enforce && inputs.record_kind == 'pull_request'
-        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
-        with:
-          ref: ${{ inputs.head_ref }}
-          fetch-depth: 0
-          persist-credentials: false
-      - name: Validate names
+      - name: Validate deterministic title rules
         if: inputs.enforce
         shell: bash
         env:
           RECORD_KIND: ${{ inputs.record_kind }}
           RECORD_TITLE: ${{ inputs.record_title }}
-          BASE_REF: ${{ inputs.base_ref }}
-          HEAD_REF: ${{ inputs.head_ref }}
-          HEAD_BRANCH: ${{ inputs.head_branch }}
-          AUTOMATION_PREFIXES: ${{ inputs.automation_prefixes }}
-          LEGACY_BRANCHES: ${{ inputs.legacy_branches }}
         run: |
           set -euo pipefail
-          if [[ "$RECORD_KIND" == pull_request ]]; then
-            [[ "$HEAD_REF" =~ ^[0-9a-f]{40}$ ]]
-            git check-ref-format "refs/heads/$BASE_REF" >/dev/null
-            git show-ref --verify --quiet "refs/remotes/origin/$BASE_REF"
-            [[ $(git rev-parse HEAD) == "$HEAD_REF" ]]
-          fi
           python3 - <<'PY'
-          import os, re, subprocess, sys
+          import os
+          import re
+          import sys
 
           conventional = re.compile(
               r"^(?:build|chore|ci|docs|feat|fix|perf|refactor|revert|test)"
               r"(?:\([a-z0-9][a-z0-9.-]*\))?!?: [a-z0-9].{0,71}$"
           )
-          branch_pattern = re.compile(
-              r"^(?:(?:chore|ci|docs|feat|fix|refactor|test)/[a-z0-9]+(?:-[a-z0-9]+)*|issue/[1-9][0-9]*-attempt-[1-9][0-9]*)$"
-          )
           kind = os.environ.get("RECORD_KIND", "")
           title = os.environ.get("RECORD_TITLE", "")
           errors = []
-
           if kind == "issue":
               if not title or title != title.strip() or len(title) > 60:
                   errors.append("Issue title must be concise, unpadded, and at most 60 characters")
@@ -90,23 +50,10 @@ jobs:
               if re.match(r"^(?:\[[^]]+\]|\w+(?:\([^)]*\))?!?:)", title):
                   errors.append("Issue title must not include metadata or Conventional Commit prefixes")
           elif kind == "pull_request":
-              branch = os.environ.get("HEAD_BRANCH", "")
-              legacy = set(filter(None, os.environ.get("LEGACY_BRANCHES", "").splitlines()))
-              automation = tuple(filter(None, os.environ.get("AUTOMATION_PREFIXES", "dependabot/").splitlines()))
-              automated = any(branch.startswith(prefix) and len(branch) > len(prefix) for prefix in automation)
-              if branch not in legacy and not branch_pattern.fullmatch(branch) and not automated:
-                  errors.append("Branch must use <type>/<short-kebab-scope>, issue/<number>-attempt-<number>, or an approved automation prefix")
-              if not automated and not conventional.fullmatch(title):
+              if not conventional.fullmatch(title):
                   errors.append("Pull-request title must be a concise Conventional Commit subject")
-              commits = subprocess.run(
-                  ["git", "log", "--format=%s", f"origin/{os.environ['BASE_REF']}...HEAD"],
-                  text=True, capture_output=True, check=False,
-              )
-              if not automated and (commits.returncode or any(not conventional.fullmatch(subject) for subject in commits.stdout.splitlines())):
-                  errors.append("Every proposed commit must use a Conventional Commit subject")
           else:
               errors.append("record_kind must be issue or pull_request")
-
           for error in errors:
               print(f"::error::{error}")
           sys.exit(bool(errors))

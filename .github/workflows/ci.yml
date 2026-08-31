@@ -1,9 +1,5 @@
 name: Reusable deterministic CI
 
-# =============================================================================
-# 1. CALL CONTRACT — revision, comparison base, and client-native commands
-# Empty commands are intentional skips; this workflow adds no stack opinion.
-# =============================================================================
 on:
   workflow_call:
     inputs:
@@ -16,15 +12,21 @@ on:
         required: true
         type: string
       protected_paths:
-        description: Optional newline-separated globs added to immutable safe defaults.
+        description: Newline-separated additional paths that implementation PRs must not change.
         required: false
         default: ""
         type: string
-      build_command:
+      node_version:
+        description: Node.js version to install; empty skips Node setup.
         required: false
         default: ""
         type: string
-      test_command:
+      terraform_version:
+        description: Terraform version to install; empty skips Terraform setup.
+        required: false
+        default: ""
+        type: string
+      setup_command:
         required: false
         default: ""
         type: string
@@ -32,67 +34,32 @@ on:
         required: false
         default: ""
         type: string
+      test_command:
+        required: false
+        default: ""
+        type: string
+      build_command:
+        required: false
+        default: ""
+        type: string
       typecheck_command:
         required: false
         default: ""
         type: string
-      enforce_instruction_budgets:
-        description: Enforce concise root and nested AGENTS.md overlays.
+      extra_command:
         required: false
-        default: false
-        type: boolean
+        default: ""
+        type: string
 
-# =============================================================================
-# 2. REVISION RUN ISOLATION — keep only the newest run for one proposed revision
-# =============================================================================
 concurrency:
   group: ci-${{ github.repository }}-${{ inputs.head_ref }}
   cancel-in-progress: true
 
 jobs:
-  # ===========================================================================
-  # 3. PENDING STATUS — isolated writer with no checkout or client code
-  # ===========================================================================
-  status_pending:
-    name: Report pending PR-head status
-    runs-on: ubuntu-latest
-    timeout-minutes: 5
-    permissions:
-      statuses: write
-    steps:
-      - name: Validate immutable revision input
-        shell: bash
-        env:
-          HEAD_REF: ${{ inputs.head_ref }}
-        run: |
-          set -euo pipefail
-          if [[ ! "$HEAD_REF" =~ ^[0-9a-f]{40}$ ]]; then
-            echo "::error::head_ref must be a full lowercase commit SHA"
-            exit 1
-          fi
-
-      - name: Publish pending status
-        shell: bash
-        env:
-          GH_TOKEN: ${{ github.token }}
-          HEAD_REF: ${{ inputs.head_ref }}
-        run: |
-          set -euo pipefail
-          run_url="$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
-          gh api --method POST "repos/$GITHUB_REPOSITORY/statuses/$HEAD_REF" \
-            -f state=pending \
-            -f context=dev-platform/deterministic-ci \
-            -f description='Deterministic CI is running' \
-            -f target_url="$run_url" >/dev/null
-
-  # ===========================================================================
-  # 4. VERIFY — read-only checkout, policy gate, then untrusted client commands
-  # ===========================================================================
   verify:
     name: Deterministic CI
-    needs: status_pending
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 45
     permissions:
       contents: read
     steps:
@@ -102,14 +69,11 @@ jobs:
           HEAD_REF: ${{ inputs.head_ref }}
         run: |
           set -euo pipefail
-          if [[ ! "$HEAD_REF" =~ ^[0-9a-f]{40}$ ]]; then
+          [[ "$HEAD_REF" =~ ^[0-9a-f]{40}$ ]] || {
             echo "::error::head_ref must be a full lowercase commit SHA"
             exit 1
-          fi
+          }
 
-      # -----------------------------------------------------------------------
-      # 4A. SCOPE GATE — compare with the trusted base before running client code.
-      # -----------------------------------------------------------------------
       - name: Check out proposed revision
         uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
         with:
@@ -127,45 +91,43 @@ jobs:
         run: |
           set -euo pipefail
           git check-ref-format "refs/heads/$BASE_REF" >/dev/null
-          if ! git show-ref --verify --quiet "refs/remotes/origin/$BASE_REF"; then
-            echo "::error::Base branch is missing from the full checkout: $BASE_REF"
+          git show-ref --verify --quiet "refs/remotes/origin/$BASE_REF" || {
+            echo "::error::Base branch is missing from checkout: $BASE_REF"
             exit 1
-          fi
-          if [[ $(git rev-parse HEAD) != "$HEAD_REF" ]]; then
-            echo "::error::Checkout does not match the requested immutable commit"
+          }
+          [[ $(git rev-parse HEAD) == "$HEAD_REF" ]] || {
+            echo "::error::Checkout does not match the requested commit"
             exit 1
-          fi
-          git diff --name-only -z "origin/$BASE_REF...HEAD" > "$CHANGED_FILES"
+          }
+          git diff --no-renames --name-only -z "origin/$BASE_REF...HEAD" > "$CHANGED_FILES"
           python3 - <<'PY'
           import fnmatch
           import os
           import pathlib
           import sys
 
-          defaults = """PROJECT.md
-          AGENTS.md
-          **/AGENTS.md
-          .github/workflows
-          .github/workflows/**
-          .github/actions
-          .github/actions/**
-          infrastructure
-          infrastructure/**
-          terraform
-          terraform/**
-          *.tf
-          **/*.tf
-          *.tfvars
-          **/*.tfvars"""
-          extra = os.environ.get("PROTECTED_PATHS", "").strip()
-          raw = defaults + (f"\n{extra}" if extra else "")
-          patterns = [line.strip() for line in raw.splitlines() if line.strip() and not line.lstrip().startswith("#")]
+          patterns = [
+              ".github/workflows",
+              ".github/workflows/**",
+              ".github/actions",
+              ".github/actions/**",
+          ]
+          patterns.extend(
+              line.strip()
+              for line in os.environ.get("PROTECTED_PATHS", "").splitlines()
+              if line.strip() and not line.lstrip().startswith("#")
+          )
           changed = [
               os.fsdecode(path)
               for path in pathlib.Path(os.environ["CHANGED_FILES"]).read_bytes().split(b"\0")
               if path
           ]
-          blocked = [(path, pattern) for path in changed for pattern in patterns if fnmatch.fnmatchcase(path, pattern)]
+          blocked = [
+              (path, pattern)
+              for path in changed
+              for pattern in patterns
+              if fnmatch.fnmatchcase(path, pattern)
+          ]
           if blocked:
               for path, pattern in blocked:
                   display = path.encode("unicode_escape").decode("ascii")
@@ -174,68 +136,25 @@ jobs:
           print(f"Protected-path gate passed for {len(changed)} changed file(s).")
           PY
 
-      - name: Enforce agent instruction budgets
-        if: inputs.enforce_instruction_budgets
-        shell: bash
-        env:
-          CENTRAL_POLICY_BYTES: "1309" # generated by scripts/sync-agent-policy.py
-        run: |
-          set -euo pipefail
-          if [[ -L AGENTS.md ]]; then
-            echo "::error::Repository AGENTS.md must not be a symlink"
-            exit 1
-          fi
-          if [[ ! -f AGENTS.md ]]; then
-            echo "::error::Repository AGENTS.md must be a regular file"
-            exit 1
-          fi
-          root_bytes=$(wc -c < AGENTS.md)
-          if (( CENTRAL_POLICY_BYTES > 4096 )); then
-            echo "::error::Central agent policy exceeds 4 KiB: $CENTRAL_POLICY_BYTES bytes"
-            exit 1
-          fi
-          if (( root_bytes > 4096 )); then
-            echo "::error::Repository AGENTS.md exceeds 4 KiB: $root_bytes bytes"
-            exit 1
-          fi
-          if (( CENTRAL_POLICY_BYTES + root_bytes > 8192 )); then
-            echo "::error::Effective central-plus-root instructions exceed 8 KiB"
-            exit 1
-          fi
-          failed=false
-          while IFS= read -r -d '' nested; do
-            if [[ $nested == ./AGENTS.md ]]; then
-              continue
-            fi
-            display=${nested#./}
-            if [[ -L $nested ]]; then
-              echo "::error file=$display::Nested AGENTS.md must not be a symlink"
-              failed=true
-            elif [[ ! -f $nested ]]; then
-              echo "::error file=$display::Nested AGENTS.md must be a regular file"
-              failed=true
-            elif (( $(wc -c < "$nested") > 2048 )); then
-              echo "::error file=$display::Nested AGENTS.md exceeds 2 KiB"
-              failed=true
-            fi
-          done < <(find . -path ./.git -prune -o -name AGENTS.md -print0)
-          [[ $failed == false ]]
+      - name: Set up Node.js
+        if: inputs.node_version != ''
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: ${{ inputs.node_version }}
+          cache: npm
 
-      # -----------------------------------------------------------------------
-      # 4B. CLIENT COMMAND CONTRACT — build, test, lint, and typecheck in order.
-      # -----------------------------------------------------------------------
-      - name: Build
-        if: inputs.build_command != ''
-        shell: bash
-        env:
-          CI_COMMAND: ${{ inputs.build_command }}
-        run: bash -euo pipefail -c "$CI_COMMAND"
+      - name: Set up Terraform
+        if: inputs.terraform_version != ''
+        uses: hashicorp/setup-terraform@dfe3c3f87815947d99a8997f908cb6525fc44e9e # v4
+        with:
+          terraform_version: ${{ inputs.terraform_version }}
+          terraform_wrapper: false
 
-      - name: Test
-        if: inputs.test_command != ''
+      - name: Setup
+        if: inputs.setup_command != ''
         shell: bash
         env:
-          CI_COMMAND: ${{ inputs.test_command }}
+          CI_COMMAND: ${{ inputs.setup_command }}
         run: bash -euo pipefail -c "$CI_COMMAND"
 
       - name: Lint
@@ -245,6 +164,20 @@ jobs:
           CI_COMMAND: ${{ inputs.lint_command }}
         run: bash -euo pipefail -c "$CI_COMMAND"
 
+      - name: Test
+        if: inputs.test_command != ''
+        shell: bash
+        env:
+          CI_COMMAND: ${{ inputs.test_command }}
+        run: bash -euo pipefail -c "$CI_COMMAND"
+
+      - name: Build
+        if: inputs.build_command != ''
+        shell: bash
+        env:
+          CI_COMMAND: ${{ inputs.build_command }}
+        run: bash -euo pipefail -c "$CI_COMMAND"
+
       - name: Typecheck
         if: inputs.typecheck_command != ''
         shell: bash
@@ -252,75 +185,30 @@ jobs:
           CI_COMMAND: ${{ inputs.typecheck_command }}
         run: bash -euo pipefail -c "$CI_COMMAND"
 
-      # -----------------------------------------------------------------------
-      # 4C. SUMMARY — make every configured or intentionally omitted check clear.
-      # -----------------------------------------------------------------------
-      - name: Report omitted checks
+      - name: Extra repository checks
+        if: inputs.extra_command != ''
         shell: bash
         env:
-          BUILD_COMMAND: ${{ inputs.build_command }}
-          TEST_COMMAND: ${{ inputs.test_command }}
-          LINT_COMMAND: ${{ inputs.lint_command }}
-          TYPECHECK_COMMAND: ${{ inputs.typecheck_command }}
+          CI_COMMAND: ${{ inputs.extra_command }}
+        run: bash -euo pipefail -c "$CI_COMMAND"
+
+      - name: Summarize configured checks
+        shell: bash
+        env:
+          SETUP: ${{ inputs.setup_command }}
+          NODE: ${{ inputs.node_version }}
+          TERRAFORM: ${{ inputs.terraform_version }}
+          LINT: ${{ inputs.lint_command }}
+          TEST: ${{ inputs.test_command }}
+          BUILD: ${{ inputs.build_command }}
+          TYPECHECK: ${{ inputs.typecheck_command }}
+          EXTRA: ${{ inputs.extra_command }}
         run: |
           set -euo pipefail
-          for name in BUILD TEST LINT TYPECHECK; do
-            variable="${name}_COMMAND"
-            if [ -z "${!variable}" ]; then
-              echo "$name: not configured (skipped)" >> "$GITHUB_STEP_SUMMARY"
+          for name in NODE TERRAFORM SETUP LINT TEST BUILD TYPECHECK EXTRA; do
+            if [[ -n "${!name}" ]]; then
+              echo "- $name: configured" >> "$GITHUB_STEP_SUMMARY"
             else
-              echo "$name: configured" >> "$GITHUB_STEP_SUMMARY"
+              echo "- $name: skipped" >> "$GITHUB_STEP_SUMMARY"
             fi
           done
-
-  # ===========================================================================
-  # 5. FINAL STATUS — clean runner trusts only GitHub's verification result
-  # ===========================================================================
-  status_final:
-    name: Report final PR-head status
-    needs: [status_pending, verify]
-    if: always() && needs.status_pending.result == 'success'
-    runs-on: ubuntu-latest
-    timeout-minutes: 5
-    permissions:
-      statuses: write
-    steps:
-      - name: Validate immutable revision input
-        shell: bash
-        env:
-          HEAD_REF: ${{ inputs.head_ref }}
-        run: |
-          set -euo pipefail
-          if [[ ! "$HEAD_REF" =~ ^[0-9a-f]{40}$ ]]; then
-            echo "::error::head_ref must be a full lowercase commit SHA"
-            exit 1
-          fi
-
-      - name: Publish final status
-        shell: bash
-        env:
-          GH_TOKEN: ${{ github.token }}
-          HEAD_REF: ${{ inputs.head_ref }}
-          VERIFY_RESULT: ${{ needs.verify.result }}
-        run: |
-          set -euo pipefail
-          run_url="$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
-          case "$VERIFY_RESULT" in
-            success)
-              state=success
-              description='Deterministic CI passed'
-              ;;
-            failure)
-              state=failure
-              description='Deterministic CI failed'
-              ;;
-            *)
-              state=error
-              description='Deterministic CI did not complete'
-              ;;
-          esac
-          gh api --method POST "repos/$GITHUB_REPOSITORY/statuses/$HEAD_REF" \
-            -f state="$state" \
-            -f context=dev-platform/deterministic-ci \
-            -f description="$description" \
-            -f target_url="$run_url" >/dev/null

@@ -1,0 +1,61 @@
+name: Implementation issue
+description: Publish and immediately queue one Codex implementation in this repository.
+title: ""
+labels: []
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Publishing this Issue is the queue action. For cross-repository work, create one separately authorized Implementation Issue per repository. A parent that only coordinates subissues must use Planning / deferred instead.
+  - type: textarea
+    id: codex-authorization
+    attributes:
+      label: Codex authorization
+      description: Keep this prefilled instruction unchanged. It is what queues the repository-scoped task.
+      value: "@codex implement this issue in this repository. Open one draft pull request and complete its Merge Brief."
+    validations:
+      required: true
+  - type: textarea
+    id: outcome
+    attributes:
+      label: Intended outcome
+      description: What observable result should this repository produce?
+    validations:
+      required: true
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: Acceptance criteria
+      description: List verifiable conditions that must be true.
+      placeholder: "- ..."
+    validations:
+      required: true
+  - type: textarea
+    id: constraints
+    attributes:
+      label: Constraints and confirmed decisions
+      description: Record relevant product, design, technical, or compatibility decisions.
+    validations:
+      required: false
+  - type: textarea
+    id: out-of-scope
+    attributes:
+      label: Out of scope
+      description: What must this implementation deliberately not change?
+      placeholder: "- ..."
+    validations:
+      required: true
+  - type: textarea
+    id: validation
+    attributes:
+      label: Expected validation
+      description: Commands, checks, or manual evidence expected before review.
+    validations:
+      required: false
+  - type: input
+    id: parent
+    attributes:
+      label: Parent Issue
+      description: Optional link when this is part of a larger outcome.
+    validations:
+      required: false

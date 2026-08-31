@@ -11,14 +11,9 @@ permissions:
 
 jobs:
   validate:
-    name: Client governance
+    name: Governance
     uses: YOUR_ORG/dev-platform/.github/workflows/governance.yml@main
     with:
       record_kind: ${{ github.event_name == 'issues' && 'issue' || 'pull_request' }}
       record_title: ${{ github.event_name == 'issues' && github.event.issue.title || github.event.pull_request.title }}
-      base_ref: ${{ github.event.pull_request.base.ref || 'main' }}
-      head_ref: ${{ github.event.pull_request.head.sha || '' }}
-      head_branch: ${{ github.event.pull_request.head.ref || '' }}
-      automation_prefixes: ${{ vars.GOVERNANCE_AUTOMATION_PREFIXES || 'dependabot/' }}
-      legacy_branches: ${{ vars.GOVERNANCE_LEGACY_BRANCHES }}
       enforce: ${{ vars.GOVERNANCE_NAMING_ENFORCED == 'true' }}

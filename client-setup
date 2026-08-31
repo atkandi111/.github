@@ -7,289 +7,140 @@ template_root="$platform_root/templates/client"
 client_files=(
   AGENTS.md
   PROJECT.md
-  .github/ISSUE_TEMPLATE/change-request.yml
-  .github/ISSUE_TEMPLATE/agent-task.yml
+  .github/ISSUE_TEMPLATE/01-implementation.yml
+  .github/ISSUE_TEMPLATE/02-planning.yml
   .github/ISSUE_TEMPLATE/config.yml
   .github/pull_request_template.md
-  .github/workflows/agent.yml
   .github/workflows/ci.yml
   .github/workflows/governance.yml
 )
 
 usage() {
-  cat <<'EOF'
-usage:
-  ./client-setup install TARGET OWNER/REPOSITORY
-  ./client-setup check TARGET
-  ./client-setup install-canary TARGET OWNER/REPOSITORY COMMIT_SHA
-  ./client-setup check-canary TARGET
-
-Normal clients follow the reviewed dev-platform main release channel automatically.
-The canary-only commands accept a full 40-character candidate commit SHA so a
-platform change can be tested before it reaches main. The installer never
-overwrites an existing file or configures GitHub settings and secrets.
-EOF
+  printf '%s\n' \
+    'usage:' \
+    '  ./client-setup install TARGET OWNER/REPOSITORY' \
+    '  ./client-setup check TARGET' \
+    '  ./client-setup install-canary TARGET OWNER/REPOSITORY COMMIT_SHA' \
+    '  ./client-setup check-canary TARGET'
 }
 
 absolute_directory() {
   local directory=$1
-  if [[ ! -d $directory ]]; then
-    echo "directory not found: $directory" >&2
-    return 1
-  fi
+  [[ -d $directory ]] || { echo "directory not found: $directory" >&2; return 1; }
   (cd "$directory" && pwd -P)
 }
 
 validate_destination_parent() {
-  local target=$1
-  local relative=$2
-  local parent current part
+  local target=$1 relative=$2 parent current part
   local -a parts
-
   parent=$(dirname "$relative")
-  if [[ $parent == . ]]; then
-    return 0
-  fi
-
+  [[ $parent == . ]] && return 0
   current=$target
   IFS=/ read -r -a parts <<< "$parent"
   for part in "${parts[@]}"; do
     current="$current/$part"
-    if [[ -L $current ]]; then
-      echo "refusing symlinked destination directory: $current" >&2
-      return 1
-    fi
-    if [[ -e $current && ! -d $current ]]; then
-      echo "destination parent is not a directory: $current" >&2
-      return 1
-    fi
+    [[ ! -L $current ]] || { echo "refusing symlinked destination directory: $current" >&2; return 1; }
+    [[ ! -e $current || -d $current ]] || { echo "destination parent is not a directory: $current" >&2; return 1; }
   done
 }
 
 install_client() {
   local mode=$1
   shift
-  local expected_arguments=2
-  if [[ $mode == canary ]]; then
-    expected_arguments=3
-  fi
-  if [[ $# -ne $expected_arguments ]]; then
-    usage >&2
-    return 64
-  fi
+  local expected=2
+  [[ $mode == canary ]] && expected=3
+  [[ $# -eq $expected ]] || { usage >&2; return 64; }
 
-  local target platform_repository version check_command
+  local target repository version=main check_command=check relative collision=false
   target=$(absolute_directory "$1")
-  platform_repository=$2
-  version=main
-  check_command=check
+  repository=$2
+  [[ $repository =~ ^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$ ]] || {
+    echo 'invalid platform repository: expected OWNER/REPOSITORY' >&2
+    return 64
+  }
   if [[ $mode == canary ]]; then
     version=$3
     check_command=check-canary
+    [[ $version =~ ^[0-9a-f]{40}$ ]] || { echo 'invalid canary version' >&2; return 64; }
   fi
 
-  if [[ ! $platform_repository =~ ^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$ ]]; then
-    echo "invalid platform repository: expected OWNER/REPOSITORY" >&2
-    return 64
-  fi
-  if [[ $mode == canary && ! $version =~ ^[0-9a-f]{40}$ ]]; then
-    echo "invalid canary version: use a full 40-character candidate commit SHA" >&2
-    return 64
-  fi
-
-  local relative collision=false
   for relative in "${client_files[@]}"; do
-    if ! validate_destination_parent "$target" "$relative"; then
-      collision=true
-    fi
+    validate_destination_parent "$target" "$relative" || collision=true
     if [[ -e "$target/$relative" || -L "$target/$relative" ]]; then
       echo "refusing to overwrite: $target/$relative" >&2
       collision=true
     fi
   done
-  if [[ $collision == true ]]; then
-    echo "No files were installed. Merge existing files manually." >&2
-    return 1
-  fi
+  [[ $collision == false ]] || { echo 'No files were installed. Merge existing files manually.' >&2; return 1; }
 
   for relative in "${client_files[@]}"; do
     mkdir -p "$(dirname "$target/$relative")"
-    if [[ $mode == canary ]]; then
-      sed \
-        -e "s|YOUR_ORG/dev-platform|$platform_repository|g" \
-        -e "s|@main|@$version|g" \
-        "$template_root/$relative" > "$target/$relative"
-    else
-      sed \
-        -e "s|YOUR_ORG/dev-platform|$platform_repository|g" \
-        "$template_root/$relative" > "$target/$relative"
-    fi
+    sed -e "s|YOUR_ORG/dev-platform|$repository|g" -e "s|@main|@$version|g" \
+      "$template_root/$relative" > "$target/$relative"
   done
 
-  cat <<EOF
-Installed ${#client_files[@]} client files in $target.
-
-Next:
-1. Replace the guidance in PROJECT.md and AGENTS.md.
-2. Run: $platform_root/client-setup $check_command "$target"
-3. Configure the GitHub values printed by that check.
-EOF
+  printf 'Installed %s client files in %s.\n\n' "${#client_files[@]}" "$target"
+  printf '%s\n' \
+    'Next:' \
+    '1. Replace template guidance and tailor CI commands.' \
+    "2. Run: $platform_root/client-setup $check_command \"$target\"" \
+    '3. Configure the repository Codex Cloud environment from docs/cloud-setup.md.'
 }
 
 check_client() {
   local mode=$1
   shift
-  if [[ $# -ne 1 ]]; then
-    usage >&2
-    return 64
-  fi
-
-  local target relative failed=false
+  [[ $# -eq 1 ]] || { usage >&2; return 64; }
+  local target relative failed=false expected=@main
   target=$(absolute_directory "$1")
+  [[ $mode == canary ]] && expected='@[0-9a-f]{40}'
 
   for relative in "${client_files[@]}"; do
-    if [[ ! -f "$target/$relative" ]]; then
-      echo "missing: $relative" >&2
+    [[ -f "$target/$relative" ]] || { echo "missing: $relative" >&2; failed=true; }
+  done
+  [[ $failed == false ]] || return 1
+
+  if [[ -e "$target/.github/workflows/agent.yml" ]]; then
+    echo 'obsolete custom agent workflow found' >&2
+    failed=true
+  fi
+  for relative in "${client_files[@]}"; do
+    if grep -En 'YOUR_ORG/dev-platform|OPENAI_API_KEY|AGENT_PIPELINE_ENABLED|PIPELINE_ENABLED' "$target/$relative"; then
+      echo "obsolete or incomplete pipeline configuration found in $relative" >&2
       failed=true
     fi
   done
-
-  if [[ -L "$target/AGENTS.md" ]]; then
-    echo "repository AGENTS.md must not be a symlink" >&2
+  if ! grep -Eq "dev-platform/.github/workflows/(ci|governance)\.yml${expected}" \
+      "$target/.github/workflows/ci.yml" "$target/.github/workflows/governance.yml"; then
+    echo "workflow callers do not use the expected release reference: $expected" >&2
+    failed=true
+  fi
+  grep -Fq '@codex implement this issue' "$target/.github/ISSUE_TEMPLATE/01-implementation.yml" || {
+    echo 'implementation Issue is missing its queue instruction' >&2
+    failed=true
+  }
+  grep -Fq '## Merge Brief' "$target/.github/pull_request_template.md" || {
+    echo 'pull request template is missing the Merge Brief' >&2
+    failed=true
+  }
+  if grep -Eq 'Replace this guidance|Document the important|document the command' "$target/PROJECT.md" "$target/AGENTS.md"; then
+    echo 'repository guidance still contains template placeholders' >&2
     failed=true
   fi
 
-  if [[ $failed == false ]]; then
-    local central_bytes root_bytes effective_bytes nested
-    central_bytes=$(wc -c < "$platform_root/governance/AGENTS.md")
-    root_bytes=$(wc -c < "$target/AGENTS.md")
-    effective_bytes=$((central_bytes + root_bytes))
-    if (( central_bytes > 4096 )); then
-      echo "central agent policy exceeds 4 KiB: $central_bytes bytes" >&2
-      failed=true
-    fi
-    if (( root_bytes > 4096 )); then
-      echo "repository AGENTS.md exceeds 4 KiB: $root_bytes bytes" >&2
-      failed=true
-    fi
-    if (( effective_bytes > 8192 )); then
-      echo "effective central-plus-root instructions exceed 8 KiB: $effective_bytes bytes" >&2
-      failed=true
-    fi
-    while IFS= read -r -d '' nested; do
-      if [[ $nested == "$target/AGENTS.md" ]]; then
-        continue
-      fi
-      if [[ -L $nested ]]; then
-        echo "nested AGENTS.md must not be a symlink: ${nested#"$target/"}" >&2
-        failed=true
-      elif [[ ! -f $nested ]]; then
-        echo "nested AGENTS.md must be a regular file: ${nested#"$target/"}" >&2
-        failed=true
-      elif (( $(wc -c < "$nested") > 2048 )); then
-        echo "nested AGENTS.md exceeds 2 KiB: ${nested#"$target/"}" >&2
-        failed=true
-      fi
-    done < <(find "$target" -path "$target/.git" -prune -o -name AGENTS.md -print0)
-
-    if grep -En 'YOUR_ORG/dev-platform|DEV_PLATFORM_VERSION' \
-      "$target/.github/workflows/agent.yml" \
-      "$target/.github/workflows/ci.yml" \
-      "$target/.github/workflows/governance.yml"; then
-      echo "workflow callers contain an incomplete platform reference" >&2
-      failed=true
-    fi
-    if grep -En 'Replace this guidance|Describe what the product|Record confirmed' \
-      "$target/PROJECT.md"; then
-      echo "PROJECT.md still contains template guidance" >&2
-      failed=true
-    fi
-    if grep -En 'Document the important|document the command|Document existing' \
-      "$target/AGENTS.md"; then
-      echo "AGENTS.md still contains template guidance" >&2
-      failed=true
-    fi
-
-    if ! grep -Fq 'openai_api_key: ${{ secrets.OPENAI_API_KEY }}' \
-      "$target/.github/workflows/agent.yml"; then
-      echo "agent workflow caller must pass the named OPENAI_API_KEY secret" >&2
-      failed=true
-    fi
-
-    local agent_ref ci_ref governance_ref agent_repository ci_repository governance_repository agent_version ci_version governance_version
-    agent_ref=$(sed -nE 's|^[[:space:]]*uses:[[:space:]]+([^[:space:]]+/\.github/workflows/agent\.yml@[^[:space:]]+).*$|\1|p' \
-      "$target/.github/workflows/agent.yml")
-    ci_ref=$(sed -nE 's|^[[:space:]]*uses:[[:space:]]+([^[:space:]]+/\.github/workflows/ci\.yml@[^[:space:]]+).*$|\1|p' \
-      "$target/.github/workflows/ci.yml")
-    governance_ref=$(sed -nE 's|^[[:space:]]*uses:[[:space:]]+([^[:space:]]+/\.github/workflows/governance\.yml@[^[:space:]]+).*$|\1|p' \
-      "$target/.github/workflows/governance.yml")
-    agent_repository=${agent_ref%%/.github/workflows/*}
-    ci_repository=${ci_ref%%/.github/workflows/*}
-    governance_repository=${governance_ref%%/.github/workflows/*}
-    agent_version=${agent_ref##*@}
-    ci_version=${ci_ref##*@}
-    governance_version=${governance_ref##*@}
-    if [[ -z $agent_ref || -z $ci_ref || -z $governance_ref \
-      || $agent_repository != "$ci_repository" || $agent_repository != "$governance_repository" \
-      || $agent_version != "$ci_version" || $agent_version != "$governance_version" ]]; then
-      echo "workflow callers must use the same platform repository and version" >&2
-      failed=true
-    elif [[ $mode == canary ]]; then
-      if [[ ! $agent_version =~ ^[0-9a-f]{40}$ ]]; then
-        echo "canary workflow callers must use a full candidate commit SHA" >&2
-        failed=true
-      fi
-    elif [[ $agent_version != main ]]; then
-      echo "normal client workflow callers must follow the reviewed main release channel" >&2
-      failed=true
-    fi
-  fi
-
-  cat <<'EOF'
-
-GitHub checklist (not modified by this command):
-- OpenAI API billing is active; set a small project budget and usage alerts
-- Secret: OPENAI_API_KEY
-- Variables: AGENT_AUTHORIZED_ACTORS, PIPELINE_ENABLED=true
-- Variable: AGENT_PIPELINE_ENABLED=true (organization-wide when available,
-  otherwise set it separately in every personal-account repository)
-- Optional variables: AGENT_PROTECTED_PATHS and CI_*_COMMAND
-- Variable: GOVERNANCE_NAMING_ENFORCED=true only after the stable issue/<number>
-  pipeline contract is installed and verified
-- Optional variables: GOVERNANCE_AUTOMATION_PREFIXES and exact, expiring
-  GOVERNANCE_LEGACY_BRANCHES exceptions
-- Label: agent
-- Actions may create pull requests
-- The private dev-platform repository allows this client to call workflows
-- Future keyless OIDC migration changes only caller authentication; see the
-  dev-platform README before deleting OPENAI_API_KEY
-EOF
-
-  if [[ $failed == true ]]; then
-    return 1
-  fi
-  echo "Local client setup is ready."
+  [[ $failed == false ]] || return 1
+  printf '%s\n' \
+    'Repository files are ready.' \
+    '- Protect main and require deterministic CI.' \
+    '- Keep pull-request CI free of deployment credentials.' \
+    '- Configure Codex Cloud using docs/cloud-setup.md.' \
+    '- Keep the portfolio Project for visibility, not authorization.'
 }
 
 case ${1:-} in
-  install)
-    shift
-    install_client client "$@"
-    ;;
-  install-canary)
-    shift
-    install_client canary "$@"
-    ;;
-  check)
-    shift
-    check_client client "$@"
-    ;;
-  check-canary)
-    shift
-    check_client canary "$@"
-    ;;
-  *)
-    usage >&2
-    exit 64
-    ;;
+  install) shift; install_client main "$@" ;;
+  check) shift; check_client main "$@" ;;
+  install-canary) shift; install_client canary "$@" ;;
+  check-canary) shift; check_client canary "$@" ;;
+  *) usage >&2; exit 64 ;;
 esac

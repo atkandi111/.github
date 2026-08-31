@@ -1,0 +1,37 @@
+name: Planning / deferred issue
+description: Record or coordinate work without starting Codex.
+title: ""
+labels: []
+body:
+  - type: markdown
+    attributes:
+      value: This Issue does not authorize or start Codex. Use it for planning, deferred work, decisions, or a parent that only coordinates repository-specific Implementation subissues.
+  - type: textarea
+    id: outcome
+    attributes:
+      label: Intended outcome
+      description: What result or decision should eventually exist?
+    validations:
+      required: true
+  - type: textarea
+    id: readiness
+    attributes:
+      label: Readiness or success conditions
+      placeholder: "- ..."
+    validations:
+      required: true
+  - type: textarea
+    id: related
+    attributes:
+      label: Related or repository-specific Issues
+      description: Link dependencies or subissues when applicable.
+      placeholder: "- [ ] owner/repository#123"
+    validations:
+      required: false
+  - type: textarea
+    id: exclusions
+    attributes:
+      label: Out of scope
+      placeholder: "- ..."
+    validations:
+      required: false

@@ -1,24 +1,24 @@
 # Repository instructions
 
-Read `PROJECT.md` and the authorized Issue before editing. The central Atkandi policy is mandatory; this file adds only repository-specific context.
+Read the repository's product and planning documentation before implementation. The executable Issue defines the requested scope; do not invent missing product intent.
+
+The portfolio-wide policy is installed as global Codex guidance by the Cloud environment. This file is the repository-specific overlay and must remain useful on its own for GitHub review and local Codex work.
 
 ## Repository map
 
-Document only the directories an agent must know before making a safe change.
+Document the important application directories here.
 
 ## Commands
 
 - Build: document the command or `not applicable`.
 - Test: document the command or `not applicable`.
-- Lint/typecheck: document the commands or `not applicable`.
+- Lint: document the command or `not applicable`.
+- Typecheck: document the command or `not applicable`.
 
-## Engineering rules
+## Repository-specific rules
 
-- Follow KISS: make the smallest safe change, reuse existing patterns, and avoid speculative abstractions.
-- Do not add a new runtime dependency, external service, or architectural layer without authorization. Prefer existing tooling and report any new development-only dependency.
-- Name human-created branches `<type>/<short-kebab-scope>`, where `<type>` is `feat`, `fix`, `docs`, `refactor`, `test`, `ci`, or `chore`. Pipeline-created branches use `issue/<number>-attempt-<number>`. Do not use author or tool names as prefixes.
-- Use Conventional Commit subjects such as `feat(scope): add export controls`. Do not rewrite history or force-push unless explicitly requested.
+Document only rules that differ from, or add necessary context to, the portfolio defaults.
 
 ## Done
 
-Add only essential project-specific safety gates here. Run applicable checks and report assumptions and verification.
+Keep changes within the Issue, add appropriate tests, run applicable checks, and complete the pull request's Merge Brief. If a meaningful user-visible or product decision is unspecified, stop and state the missing decision.

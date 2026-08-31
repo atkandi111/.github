@@ -1,15 +1,7 @@
 # Governance rollout
 
-`governance/repositories.json` lists the managed repositories and the shared
-Project fields they use. Update this small inventory when a repository or field
-changes; never silently omit a client.
+The portfolio GitHub Project remains the canonical view of status and priority. Repository workflows do not use Project fields as task authorization.
 
-Before rollout, inspect each repository with `gh repo view`, confirm the client
-templates and thin workflow callers are present, and check Project fields with
-`gh project field-list`. Access or GitHub-plan failures require human review;
-they are not proof of compliance or drift.
+The reusable governance workflow validates only deterministic naming rules and is disabled by default through `GOVERNANCE_NAMING_ENFORCED`. Observe it before enabling. Cloud-generated branch names are accepted as automation and should not drive new parsing or classification logic.
 
-Current private repositories cannot enable branch protection on the present
-GitHub plan. Keep reviewed PRs, hosted checks, canaries, and kill switches as
-compensating controls. D’emand PR #55 remains the existing template canary and
-its listed legacy branch expires when that PR closes.
+Do not add semantic Issue classification, AI review, automated priority assignment, convergence loops, or auto-merge. Human-authored Issue contracts and Merge Briefs are the simpler control surface for a solo developer.

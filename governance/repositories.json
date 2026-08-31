@@ -16,13 +16,5 @@
     {"name": "atkandi111/Mahjongtale", "role": "client"},
     {"name": "atkandi111/rotary-binan-website", "role": "client"},
     {"name": "atkandi111/infrastructure", "role": "client"}
-  ],
-  "legacy_branches": [
-    {
-      "repository": "atkandi111/demandph-website",
-      "branch": "agent/chore-lightweight-change-management",
-      "owner": "atkandi111",
-      "expires_when": "PR #55 closes"
-    }
   ]
 }
