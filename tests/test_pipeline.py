@@ -64,6 +64,10 @@ def test_reusable_ci_boundary() -> None:
     require("secrets:" not in ci and "id-token: write" not in ci, "CI must be credential-free")
     require("git diff --no-renames --name-only -z" in ci, "protected-path comparison is not rename-safe")
     require(".github/workflows/**" in ci and ".github/actions/**" in ci, "verifier paths are not protected")
+    require(
+        'patterns = [\n              ".github/workflows"' in ci,
+        "immutable protected paths can be replaced by a caller",
+    )
     require("dev-platform/.github/workflows/ci.yml@main" in client, "client does not follow the main release channel")
     require("workflow_dispatch" not in client, "obsolete custom dispatch remains")
 

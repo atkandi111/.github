@@ -12,13 +12,9 @@ on:
         required: true
         type: string
       protected_paths:
-        description: Newline-separated paths that implementation PRs must not change.
+        description: Newline-separated additional paths that implementation PRs must not change.
         required: false
-        default: |-
-          .github/workflows
-          .github/workflows/**
-          .github/actions
-          .github/actions/**
+        default: ""
         type: string
       node_version:
         description: Node.js version to install; empty skips Node setup.
@@ -111,10 +107,16 @@ jobs:
           import sys
 
           patterns = [
+              ".github/workflows",
+              ".github/workflows/**",
+              ".github/actions",
+              ".github/actions/**",
+          ]
+          patterns.extend(
               line.strip()
               for line in os.environ.get("PROTECTED_PATHS", "").splitlines()
               if line.strip() and not line.lstrip().startswith("#")
-          ]
+          )
           changed = [
               os.fsdecode(path)
               for path in pathlib.Path(os.environ["CHANGED_FILES"]).read_bytes().split(b"\0")
