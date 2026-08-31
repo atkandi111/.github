@@ -2,6 +2,18 @@
 
 `dev-platform` is the reviewed source for the portfolio's shared Codex policy, deterministic pull-request checks, governance conventions, and repository templates. Codex Cloud performs implementation and branch publication; this repository does not contain a custom agent runner or publisher.
 
+## Architecture at a glance
+
+| Part | Responsibility |
+| --- | --- |
+| Portfolio GitHub Project | Shows priority and status across repositories; it does not authorize execution. |
+| Repository Implementation Issue | Records the reviewed outcome and queues one repository-scoped Codex task when published. |
+| Codex Cloud | Implements that Issue in its repository and opens a draft pull request. |
+| `dev-platform` | Supplies shared policy, reusable CI, governance, and starter templates. |
+| Application repositories | Hold product code, product context, and repository-specific commands and rules. |
+| Infrastructure repository | Holds infrastructure-as-code that Codex may edit and validate without persistent credentials. |
+| Trusted post-merge workflows | Perform deployments and persistent infrastructure changes after human approval. |
+
 ## Lean operating model
 
 1. Draft and review work before publishing it.

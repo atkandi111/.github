@@ -20,6 +20,8 @@ The reusable CI workflow rejects changes to `.github/workflows/**` and `.github/
 
 An intentional verifier change is a platform or manually supervised maintenance change, not an ordinary implementation Issue. Merge it through a controlled transition before requiring the updated check; do not add a label-based bypass to untrusted pull-request code.
 
+The current private repositories do not have enforceable branch protection or rulesets under the present GitHub plan. CI and protected-path failures therefore provide visible, deterministic evidence but cannot technically prevent an authorized maintainer from merging. Treat a failed required check as a do-not-merge signal; human review remains the enforcement point until repository settings can make the checks mandatory.
+
 ## Fail-closed behavior
 
 - Invalid or non-immutable head SHAs fail before checkout.
