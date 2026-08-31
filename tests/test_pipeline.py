@@ -73,7 +73,11 @@ def test_reusable_ci_boundary() -> None:
 
 
 def test_action_pins() -> None:
-    for relative in (".github/workflows/ci.yml", ".github/workflows/platform-checks.yml"):
+    for relative in (
+        ".github/workflows/ci.yml",
+        ".github/workflows/platform-checks.yml",
+        ".github/workflows/portfolio-project.yml",
+    ):
         for reference in re.findall(r"uses:\s+([^\s#]+)", read(relative)):
             if reference.startswith("./"):
                 continue
@@ -104,6 +108,66 @@ def test_installer() -> None:
         )
         require(repeated.returncode != 0, "installer overwrote existing files")
 
+    with tempfile.TemporaryDirectory() as directory:
+        target = pathlib.Path(directory)
+        onboarded = subprocess.run(
+            [
+                str(ROOT / "client-setup"),
+                "onboard",
+                str(target),
+                "example/dev-platform",
+                "atkandi111/demandph-website",
+            ],
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+        require(onboarded.returncode == 0, onboarded.stderr)
+
+    with tempfile.TemporaryDirectory() as directory:
+        target = pathlib.Path(directory)
+        unregistered = subprocess.run(
+            [
+                str(ROOT / "client-setup"),
+                "onboard",
+                str(target),
+                "example/dev-platform",
+                "example/unregistered-client",
+            ],
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+        require(unregistered.returncode != 0, "onboarding accepted an unregistered client")
+
+
+def test_portfolio_reconciliation_contract() -> None:
+    inventory = [
+        line
+        for line in read("config/portfolio-repositories.txt").splitlines()
+        if line and not line.startswith("#")
+    ]
+    require(inventory == sorted(inventory), "portfolio inventory is not alphabetized")
+    require(len(inventory) == len(set(inventory)), "portfolio inventory contains duplicates")
+    for repository in (
+        "atkandi111/Mahjongtale",
+        "atkandi111/demandph-website",
+        "atkandi111/dev-platform",
+        "atkandi111/infrastructure",
+        "atkandi111/rotary-binan-website",
+    ):
+        require(repository in inventory, f"portfolio inventory is missing {repository}")
+
+    workflow = read(".github/workflows/portfolio-project.yml")
+    reconciler = read("scripts/reconcile-portfolio-project")
+    require("schedule:" in workflow and "workflow_dispatch:" in workflow, "reconciliation triggers missing")
+    require("contents: read" in workflow, "reconciliation workflow must keep repository access read-only")
+    require("PORTFOLIO_PROJECT_TOKEN" in workflow, "Project credential contract missing")
+    require("gh project item-add" in reconciler, "reconciler cannot add missing items")
+    for forbidden in ("item-delete", "item-archive", "item-edit"):
+        require(forbidden not in reconciler, f"reconciler may modify existing Project data: {forbidden}")
+    require("comm -23" in reconciler and "sort -u" in reconciler, "idempotent membership comparison missing")
+
 
 def main() -> None:
     tests = (
@@ -112,6 +176,7 @@ def main() -> None:
         test_reusable_ci_boundary,
         test_action_pins,
         test_installer,
+        test_portfolio_reconciliation_contract,
     )
     for test in tests:
         test()
