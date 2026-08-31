@@ -40,6 +40,11 @@ def test_issue_and_handoff_contract() -> None:
     planning = read("templates/client/.github/ISSUE_TEMPLATE/02-planning.yml")
     brief = read("templates/client/.github/pull_request_template.md")
     require("@codex implement this issue" in implementation, "implementation Issue is not the queue action")
+    require(
+        "type: textarea\n    id: codex-authorization" in implementation,
+        "Codex authorization is not a submitted Issue field",
+    )
+    require("value: \"@codex implement this issue" in implementation, "queue instruction is not prefilled")
     require("one draft pull request" in implementation, "one-Issue/one-PR contract missing")
     require("does not authorize or start Codex" in planning, "planning opt-out boundary missing")
     for heading in ("Outcome", "Acceptance evidence", "Validation", "Review focus", "Risk and rollback"):
