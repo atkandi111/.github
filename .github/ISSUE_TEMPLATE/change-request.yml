@@ -1,15 +1,15 @@
-name: Change request
-description: Propose one focused change for human implementation.
+name: Backlog or human change
+description: Record work without starting Codex.
 title: ""
 labels: []
 body:
   - type: markdown
     attributes:
-      value: Use a 3-8 word, sentence-case title. Keep Status and Priority in the Project.
+      value: This form records work but does not authorize or start Codex. Use Implementation issue when publishing should enqueue the task.
   - type: textarea
     id: outcome
     attributes:
-      label: Outcome
+      label: Intended outcome
       description: What observable result is needed?
     validations:
       required: true

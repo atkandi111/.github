@@ -1,6 +1,8 @@
-# Agent instructions
+# Repository instructions
 
-Read `PROJECT.md` before implementation. The Issue defines the requested scope; do not invent missing product intent.
+Read the repository's product and planning documentation before implementation. The executable Issue defines the requested scope; do not invent missing product intent.
+
+The portfolio-wide policy is installed as global Codex guidance by the Cloud environment. This file is the repository-specific overlay and must remain useful on its own for GitHub review and local Codex work.
 
 ## Repository map
 
@@ -13,13 +15,10 @@ Document the important application directories here.
 - Lint: document the command or `not applicable`.
 - Typecheck: document the command or `not applicable`.
 
-## Engineering rules
+## Repository-specific rules
 
-- Follow KISS: choose the smallest, simplest safe implementation that satisfies the Issue. Reuse existing patterns and avoid speculative abstractions.
-- Do not introduce a new runtime dependency, external service, or architectural layer without explicit human authorization. Prefer existing tooling and report any new development-only dependency.
-- Name human-created branches `<type>/<short-kebab-scope>`, where `<type>` is `feat`, `fix`, `docs`, `refactor`, `test`, `ci`, or `chore`. Pipeline-created branches use `issue/<number>-attempt-<number>`. Do not use author or tool names as prefixes.
-- Use Conventional Commit subjects such as `feat(scope): add export controls`. Do not rewrite history or force-push unless explicitly requested.
+Document only rules that differ from, or add necessary context to, the portfolio defaults.
 
 ## Done
 
-Keep changes within the Issue, add appropriate tests, run applicable checks, and report assumptions. If a meaningful user-visible or product decision is unspecified, stop with `HUMAN INPUT REQUIRED` and state the missing decision.
+Keep changes within the Issue, add appropriate tests, run applicable checks, and complete the pull request's Merge Brief. If a meaningful user-visible or product decision is unspecified, stop and state the missing decision.

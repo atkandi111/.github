@@ -1,43 +1,23 @@
-name: Client CI
+name: CI
 
-# =============================================================================
-# 1. VERIFICATION EVENTS — normal PR checks plus explicit agent-branch dispatch
-# =============================================================================
 on:
   pull_request:
-    types: [opened, synchronize, reopened, edited]
-  workflow_dispatch:
-    inputs:
-      base_ref:
-        description: Base branch name.
-        required: true
-        type: string
-      head_ref:
-        description: Full commit SHA to verify.
-        required: true
-        type: string
+    types: [opened, synchronize, reopened]
+  push:
+    branches: [main]
 
 permissions:
   contents: read
-  statuses: write
 
-# =============================================================================
-# 2. THIN PLATFORM CALL — pass only refs, protected paths, and native commands
-# =============================================================================
 jobs:
   verify:
     uses: YOUR_ORG/dev-platform/.github/workflows/ci.yml@main
     with:
-      base_ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.ref || inputs.base_ref }}
-      head_ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || inputs.head_ref }}
-      protected_paths: ${{ vars.AGENT_PROTECTED_PATHS }}
-      build_command: ${{ vars.CI_BUILD_COMMAND }}
-      test_command: ${{ vars.CI_TEST_COMMAND }}
-      lint_command: ${{ vars.CI_LINT_COMMAND }}
-      typecheck_command: ${{ vars.CI_TYPECHECK_COMMAND }}
-
-  # ===========================================================================
-  # 3. CLIENT EXTENSION POINT — optional non-production preview
-  # Add a provider-specific job here only when supported. It must need `verify`,
-  # deploy the exact head SHA, and keep preview secrets out of `verify`.
-  # ===========================================================================
+      base_ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.ref || github.ref_name }}
+      head_ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
+      node_version: "22"
+      setup_command: npm ci
+      lint_command: npm run lint
+      test_command: npm test
+      build_command: npm run build
+      typecheck_command: npm run typecheck

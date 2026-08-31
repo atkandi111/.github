@@ -1,30 +1,13 @@
-# Change record naming
+# Naming conventions
 
-Issue titles describe the requested outcome: prefer 3-8 words, use sentence
-case, stay within 60 characters, omit a trailing period, and keep repository,
-status, priority, author, tool, task, and Conventional Commit prefixes out.
-Status, Priority, and Waiting On belong in Project fields.
+## Issues
 
-Human branches use `<type>/<short-kebab-scope>` with `feat`, `fix`, `docs`,
-`refactor`, `test`, `ci`, or `chore`. Pipeline retries use
-`issue/<number>-attempt-<number>` so separate draft PRs do not collide. Only
-registered automation prefixes such as `dependabot/` are allowed. New `agent/`
-and `codex/` branches are rejected.
+Use a concise sentence-case title without a final period. Keep status, priority, and portfolio metadata in the GitHub Project.
 
-Pull-request titles and every proposed commit subject use Conventional Commit
-format. Configure squash merging so the validated pull-request title becomes
-the commit subject on `main`.
+## Branches and pull requests
 
-Approved dependency-update prefixes are the sole naming exception: their
-provider-generated PR titles and commits are accepted unchanged.
+Human-created branches use `<type>/<short-kebab-scope>`, where `<type>` is `feat`, `fix`, `docs`, `refactor`, `test`, `ci`, or `chore`. Codex Cloud may choose its own generated branch name; branch naming is not an authorization boundary.
 
-Exact legacy branch names may be temporarily registered in
-`GOVERNANCE_LEGACY_BRANCHES`; wildcard legacy prefixes are not supported. Each
-exception needs an owner and expiry in the repository inventory. Apply the
-rules prospectively—do not rewrite history or rename inactive branches merely
-for compliance.
+Pull-request titles and human-authored commit subjects use Conventional Commit form, for example `feat(search): add result filters`. Do not require Codex-generated intermediate commits to conform when the platform controls them.
 
-The thin caller defaults `GOVERNANCE_NAMING_ENFORCED` to off. Enable it only
-after the repository's agent pipeline uses the retry branch format and creates
-Conventional Commit PR titles and subjects. Until then the check reports the
-missing activation without rejecting active legacy automation.
+The reusable governance workflow remains optional. Enable only deterministic rules that reduce real friction; do not block useful work merely to normalize Cloud-generated branch names.
