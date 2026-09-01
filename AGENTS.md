@@ -5,6 +5,7 @@ This repository is the reviewed source for portfolio-wide Codex guidance, reusab
 ## Before editing
 
 - Read `README.md` and the relevant document under `docs/`.
+- Before creating, splitting, combining, or reviewing Issues, read `docs/issue-planning.md`.
 - Keep the system lean enough for one developer to understand and maintain.
 - Extend existing templates and reusable workflows before adding another abstraction.
 - Treat changes under `policy/`, `templates/`, and reusable workflows as portfolio-wide changes.

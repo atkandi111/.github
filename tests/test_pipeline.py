@@ -38,6 +38,8 @@ def test_removed_custom_runtime() -> None:
 def test_issue_and_handoff_contract() -> None:
     implementation = read("templates/client/.github/ISSUE_TEMPLATE/01-implementation.yml")
     planning = read("templates/client/.github/ISSUE_TEMPLATE/02-planning.yml")
+    planning_guide = read("docs/issue-planning.md")
+    policy = read("policy/AGENTS.md")
     brief = read("templates/client/.github/pull_request_template.md")
     require("@codex implement this issue" in implementation, "implementation Issue is not the queue action")
     require(
@@ -46,7 +48,16 @@ def test_issue_and_handoff_contract() -> None:
     )
     require("value: \"@codex implement this issue" in implementation, "queue instruction is not prefilled")
     require("one draft pull request" in implementation, "one-Issue/one-PR contract missing")
+    require("docs/issue-planning.md" in implementation, "implementation Issue does not link planning guidance")
     require("does not authorize or start Codex" in planning, "planning opt-out boundary missing")
+    require("docs/issue-planning.md" in planning, "planning Issue does not link planning guidance")
+    for contract in (
+        "one cohesive, reviewable repository outcome",
+        "one executable Issue per repository",
+        "non-executable planning subissues",
+    ):
+        require(contract in planning_guide, f"Issue planning guide is missing: {contract}")
+        require(contract in policy, f"shared policy is missing Issue-planning context: {contract}")
     for heading in ("Outcome", "Acceptance evidence", "Validation", "Review focus", "Risk and rollback"):
         require(heading in brief, f"Merge Brief is missing {heading}")
     require(

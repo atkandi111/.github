@@ -2,6 +2,14 @@
 
 This is the shared default for Atkandi repositories. Repository-local `AGENTS.md` files add product context, commands, and narrower rules.
 
+## Issue planning
+
+- Draft and review an Issue before publishing it. Publishing an Implementation Issue is the queue action; use Planning / deferred while decisions or boundaries remain unsettled.
+- Treat one executable Issue as one cohesive, reviewable repository outcome that normally produces one draft pull request. Do not split tightly coupled same-repository details into repetitive executable Issues, and do not combine unrelated outcomes.
+- Use a Planning / deferred parent to coordinate a larger outcome. Create executable subissues only for separately authorized repository outcomes or independently reviewable slices; the parent does not authorize implementation.
+- Cross-repository work requires one executable Issue per repository. When several same-repository details should share one pull request, consolidate them into one executable subissue and keep the detail in checklists or non-executable planning subissues.
+- Record the intended outcome, acceptance criteria, confirmed constraints, out-of-scope boundaries, expected validation, likely documentation impact, and parent or related Issues before execution.
+
 ## Authorization and scope
 
 - An executable implementation Issue authorizes work only in the repository where it was published and normally results in one draft pull request.

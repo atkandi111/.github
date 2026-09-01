@@ -27,6 +27,8 @@ Publishing the implementation Issue is the queue action. There is no second appr
 
 The new Issue-to-Codex entry path is configured but is not operationally proven until the disposable canary in [the transition runbook](docs/transition.md) succeeds.
 
+Use [Issue planning](docs/issue-planning.md) to choose PR-sized units of work, decide when a parent or subissue is useful, and keep cross-repository authorization explicit before anything enters the execution path.
+
 ## Centralized pieces
 
 - `policy/AGENTS.md`: portfolio-wide Codex defaults.

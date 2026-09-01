@@ -6,7 +6,9 @@ body:
   - type: markdown
     attributes:
       value: |
-        Publishing this Issue is the queue action. For cross-repository work, create one separately authorized Implementation Issue per repository. A parent that only coordinates subissues must use Planning / deferred instead.
+        Publishing this Issue is the queue action. Choose one cohesive, reviewable repository outcome that should normally produce one pull request. Combine tightly coupled same-repository details; split independent or cross-repository outcomes. A parent that only coordinates subissues must use Planning / deferred instead.
+
+        Planning guide: https://github.com/atkandi111/dev-platform/blob/main/docs/issue-planning.md
   - type: textarea
     id: codex-authorization
     attributes:
