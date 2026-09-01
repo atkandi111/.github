@@ -6,10 +6,10 @@
 
 | Part | Responsibility |
 | --- | --- |
-| Portfolio GitHub Project | Shows priority and status across repositories; it does not authorize execution. |
+| Portfolio GitHub Project | Shows priority and status across repositories; native rules and the central reconciler keep open items present, but Project membership does not authorize execution. |
 | Repository Implementation Issue | Records the reviewed outcome and queues one repository-scoped Codex task when published. |
 | Codex Cloud | Implements that Issue in its repository and opens a draft pull request. |
-| `dev-platform` | Supplies shared policy, reusable CI, governance, and starter templates. |
+| `dev-platform` | Supplies shared policy, reusable CI, governance, Portfolio reconciliation, and starter templates. |
 | Application repositories | Hold product code, product context, and repository-specific commands and rules. |
 | Infrastructure repository | Holds infrastructure-as-code that Codex may edit and validate without persistent credentials. |
 | Trusted post-merge workflows | Perform deployments and persistent infrastructure changes after human approval. |
@@ -24,6 +24,8 @@
 6. A human reviews and merges. Separate trusted post-merge workflows perform deployments or persistent infrastructure changes.
 
 Publishing the implementation Issue is the queue action. There is no second approval label, custom dispatcher, publisher, semantic classifier, AI reviewer, convergence controller, or auto-merge system.
+
+The new Issue-to-Codex entry path is configured but is not operationally proven until the disposable canary in [the transition runbook](docs/transition.md) succeeds.
 
 ## Centralized pieces
 
