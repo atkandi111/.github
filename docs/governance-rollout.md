@@ -11,11 +11,18 @@ Do not add semantic Issue classification, AI review, automated priority assignme
 The Project's native auto-add workflow targets `atkandi111/demandph-website` with `is:issue,pr is:open`. GitHub permits only one native auto-add workflow on the current plan, and each workflow targets one repository, so `dev-platform` provides the narrow fallback for the rest of the portfolio:
 
 - `config/portfolio-repositories.txt` is the reviewed inventory of active repositories.
-- `.github/workflows/portfolio-project.yml` audits every listed repository and reconciles missing open Issues and pull requests hourly.
-- `scripts/reconcile-portfolio-project audit` reports exact missing URLs without changing the Project.
-- `scripts/reconcile-portfolio-project reconcile` adds only missing open items. It never removes or archives items and never edits Status, Priority, Waiting On, or other fields.
+- `.github/workflows/portfolio-project.yml` audits every listed repository and reconciles missing open Issues, pull requests, and lifecycle Status values every 15 minutes.
+- `scripts/reconcile-portfolio-project audit` reports exact membership and Status drift without changing the Project.
+- `scripts/reconcile-portfolio-project reconcile` adds missing open items and edits only their Status field. It never removes or archives items and never edits Priority, Waiting On, or unrelated fields.
 
-The Project's enabled **Item added to project** workflow supplies the normal initial `Todo` status. Its lifecycle workflows move closed and merged items to `Done`, reopened items to `Todo`, linked or changes-requested work to `In Progress`, and approved pull requests to `Review`.
+The four statuses mean:
+
+- `Todo`: planning, deferred, backlogged, or not yet delegated;
+- `In Progress`: the owner posted the exact trigger, or work is queued, running, in a draft pull request, blocked after starting, or undergoing revisions;
+- `For Review`: a linked pull request is no longer draft and has no outstanding changes request;
+- `Done`: the pull request merged or the Issue closed with the completed reason.
+
+The Project's native workflows provide immediate safe transitions for item-added, reopened, linked-PR, changes-requested, approved, and merged events. The broad native **Item closed** workflow is disabled because it cannot distinguish a completed Issue from a not-planned Issue or an unmerged closed pull request; the reconciler sets `Done` only from the completed reason or a merge. GitHub Projects has no native Issue-comment or ready-for-review trigger, so the central reconciler fills those gaps on its schedule. It accepts only the exact unedited top-level trigger comment authored by the repository owner; Issue-body text and all other comment forms are ignored. Project status is informational and never invokes Codex, merges, or deploys.
 
 The Actions workflow requires the repository secret `PORTFOLIO_PROJECT_TOKEN`. Use a dedicated credential able to read the registered private repositories and read/write the user-owned Project. For a classic personal access token, GitHub requires `repo` for private repository records and `project` for Project queries and mutations. Never pass the token as a command argument or print it.
 
@@ -25,6 +32,6 @@ The Actions workflow requires the repository secret `PORTFOLIO_PROJECT_TOKEN`. U
 2. If the GitHub plan has an unused native auto-add slot, add a repository-specific rule with `is:issue,pr is:open`; otherwise the scheduled reconciler is the auto-add coverage.
 3. Run `./client-setup onboard TARGET PLATFORM_OWNER/REPOSITORY CLIENT_OWNER/REPOSITORY`. It refuses unregistered clients.
 4. Run the **Portfolio Project reconciliation** workflow in `audit` mode and confirm there are no missing open items.
-5. Open one disposable Issue in the new repository, run or await reconciliation, and confirm one Project item appears with `Status: Todo` and no Priority. Close and reopen it once to verify `Done` then `Todo`, confirm no duplicate appears, and close it afterward.
+5. Open one disposable Planning / deferred Issue in the new repository, run or await reconciliation, and confirm one Project item appears with `Status: Todo` and no Priority. Close it as completed and reopen it once to verify `Done` then `Todo`, confirm no duplicate appears, and close it afterward.
 
 Treat a missing secret, Project access error, inventory omission, duplicate repository, or audit gap as failed onboarding. Do not compensate by using Project fields as execution authority.

@@ -22,10 +22,10 @@ Repository-local `AGENTS.md` remains the source for repository commands and prod
 
 ## Required canary
 
-Before enabling this as the normal queue path, publish one disposable implementation Issue in a low-risk repository and verify:
+Before enabling this as the normal queue path, publish one disposable Implementation Issue in a low-risk repository, then post the exact owner trigger comment and verify:
 
-- publishing the Issue body alone does not start a task;
-- the exact top-level `@codex implement this issue...` comment starts exactly one task;
+- publishing the Issue alone does not start Codex;
+- the exact new top-level owner comment starts exactly one task;
 - the task reads both the global and repository-local guidance;
 - it changes only the authorized repository;
 - after the task completes, **Create PR** publishes one pull request;
@@ -33,4 +33,6 @@ Before enabling this as the normal queue path, publish one disposable implementa
 - CI runs without secrets and protected workflow paths are rejected;
 - closing/canceling the test leaves no deployed or persistent resource.
 
-The first D'EMAND canary confirmed this sequence: the initial Issue-body mention did not start a task, while the later top-level comment did. The task completed, **Create PR** published the branch, and the operator converted the pull request to draft before review. See [issue #60](https://github.com/atkandi111/demandph-website/issues/60) and [PR #61](https://github.com/atkandi111/demandph-website/pull/61). Do not rebuild the former dispatcher.
+The first D'EMAND canary confirmed this sequence: the initial Issue-body mention did not start a task, while the later top-level comment did. The task completed, **Create PR** published the branch, and the operator converted the pull request to draft before review. See [issue #60](https://github.com/atkandi111/demandph-website/issues/60) and [PR #61](https://github.com/atkandi111/demandph-website/pull/61).
+
+Issue-body mentions, quoted or edited text, and comments from other actors are unsupported. Keep the exact top-level owner comment as the single queue action; do not rebuild the former dispatcher.

@@ -18,22 +18,24 @@
 ## Lean operating model
 
 1. Draft and review work before publishing it.
-2. Normally publish an **Implementation issue** in the repository that will change. Publication records the reviewed contract but does not start Codex.
-3. Post the exact top-level `@codex implement this issue...` comment shown by the form to start one repository-scoped task.
-4. When the task finishes, use **Create PR**, confirm or convert the pull request to draft, and ensure its human-readable **Merge Brief** is complete.
-5. Use **Planning / deferred issue** for coordination that must not start Codex. A coordination-only parent can link separately authorized Implementation subissues in each affected repository.
-6. Central reusable CI and optional naming governance verify the pull request without deployment credentials.
-7. A human reviews and merges. Separate trusted post-merge workflows perform deployments or persistent infrastructure changes.
+2. Normally publish an **Implementation issue** in the repository that will change. It remains `Todo` until the repository owner posts the exact supported top-level Codex comment.
+3. When Codex finishes, use **Create PR**, confirm or convert the pull request to draft, and ensure its human-readable **Merge Brief** is complete.
+4. Use **Planning / deferred issue** only when publication must not start Codex. A coordination-only parent can link separately authorized Implementation subissues in each affected repository.
+5. Central reusable CI and optional naming governance verify the pull request without deployment credentials.
+6. A human reviews and merges. Separate trusted post-merge workflows perform deployments or persistent infrastructure changes.
 
-The explicit top-level Issue comment is the queue action. There is no approval label, custom dispatcher, publisher, semantic classifier, AI reviewer, convergence controller, or auto-merge system.
+The owner's exact top-level `@codex implement this issue...` comment is the queue action. An Issue-body mention is not supported. There is no approval label, custom dispatcher, publisher, semantic classifier, AI reviewer, convergence controller, or auto-merge system.
 
-The D'EMAND canary proved the explicit-comment entry path; see [Cloud setup](docs/cloud-setup.md). Each additional repository still needs its own environment check before relying on the path there.
+The D'EMAND canary proved the exact top-level owner-comment path; see [Cloud setup](docs/cloud-setup.md). Run the disposable canary when onboarding another repository or Codex Cloud environment; Issue-body mentions remain unsupported.
+
+Use [Issue planning](docs/issue-planning.md) to choose PR-sized units of work, decide when a parent or subissue is useful, and keep cross-repository authorization explicit before anything enters the execution path.
 
 ## Centralized pieces
 
 - `policy/AGENTS.md`: portfolio-wide Codex defaults.
 - `.github/workflows/ci.yml`: reusable credential-free CI and protected-path enforcement.
 - `.github/workflows/governance.yml`: optional deterministic naming checks.
+- `.github/workflows/portfolio-project.yml`: centralized open-item and lifecycle Status reconciliation.
 - `templates/client/`: thin repository callers, Issue forms, Merge Brief, and local guidance skeletons.
 - `client-setup`: conservative installer and readiness checker for new repositories.
 
@@ -58,6 +60,6 @@ For a new repository:
 ./client-setup check /path/to/repository
 ```
 
-The installer refuses to overwrite existing files. Existing repositories should merge the templates deliberately. Configure the Codex Cloud environment separately using [docs/cloud-setup.md](docs/cloud-setup.md), then run the canary described there before relying on Issue mentions.
+The installer refuses to overwrite existing files. Existing repositories should merge the templates deliberately. Configure the Codex Cloud environment separately using [docs/cloud-setup.md](docs/cloud-setup.md), then run the canary described there before relying on the owner-comment trigger in that environment.
 
 For merge order, existing work, existing Issues, cleanup, and rollback, follow [docs/transition.md](docs/transition.md).

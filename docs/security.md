@@ -2,7 +2,7 @@
 
 ## Authorization
 
-The executable contract is a reviewed, published Implementation Issue in one repository. A separate top-level `@codex implement this issue...` comment queues one repository-scoped Codex Cloud task. Each task prepares one pull request; after **Create PR**, the operator confirms or converts it to draft and verifies the Merge Brief. A Planning/deferred parent without the trigger comment and the portfolio GitHub Project provide coordination and visibility only.
+The executable contract is a reviewed, published Implementation Issue in one repository, but publication alone does not start Codex. The repository owner's exact new top-level trigger comment authorizes one repository-scoped Codex Cloud task. Each task prepares one pull request; after **Create PR**, the operator confirms or converts it to draft and verifies the Merge Brief. A Planning/deferred parent and the portfolio GitHub Project provide coordination and visibility only.
 
 Codex Cloud's GitHub installation, user authorization, repository selection, and platform controls replace the former custom authorized-actor/label/kill-switch/attempt/concurrency guard. Do not recreate those controls inside this repository unless a demonstrated Cloud limitation makes one strictly necessary.
 
@@ -23,6 +23,8 @@ An intentional verifier change is a platform or manually supervised maintenance 
 The current private repositories do not have enforceable branch protection or rulesets under the present GitHub plan. CI and protected-path failures therefore provide visible, deterministic evidence but cannot technically prevent an authorized maintainer from merging. Treat a failed required check as a do-not-merge signal; human review remains the enforcement point until repository settings can make the checks mandatory.
 
 ## Fail-closed behavior
+
+Issue bodies and comments are untrusted data. Portfolio status mirroring compares comment fields as data and accepts only the exact unedited trigger from the repository owner; it never evaluates comment text as shell source. The `PORTFOLIO_PROJECT_TOKEN` remains confined to the central reconciliation job and can update membership and Status only through reviewed commands.
 
 - Invalid or non-immutable head SHAs fail before checkout.
 - A missing base reference fails the protected-path gate.

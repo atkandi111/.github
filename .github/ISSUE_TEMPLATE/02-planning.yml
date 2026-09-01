@@ -5,7 +5,10 @@ labels: []
 body:
   - type: markdown
     attributes:
-      value: This Issue does not authorize or start Codex. Use it for planning, deferred work, decisions, or a parent that only coordinates repository-specific Implementation subissues.
+      value: |
+        This Issue does not authorize or start Codex. Use it for planning, deferred work, decisions, or a parent that coordinates repository-specific Implementation subissues. Create executable subissues only for separately reviewable repository outcomes; consolidate same-repository details when they should share one pull request.
+
+        Planning guide: https://github.com/atkandi111/dev-platform/blob/main/docs/issue-planning.md
   - type: textarea
     id: outcome
     attributes:

@@ -2,11 +2,11 @@ name: Portfolio Project reconciliation
 
 on:
   schedule:
-    - cron: "17 * * * *"
+    - cron: "7,22,37,52 * * * *"
   workflow_dispatch:
     inputs:
       mode:
-        description: Audit reports gaps; reconcile also adds missing open items.
+        description: Audit reports membership/status drift; reconcile also repairs it.
         required: true
         default: audit
         type: choice
@@ -23,7 +23,7 @@ concurrency:
 
 jobs:
   reconcile:
-    name: Reconcile Project membership
+    name: Reconcile Project membership and Status
     runs-on: ubuntu-latest
     timeout-minutes: 10
     env:
@@ -36,6 +36,6 @@ jobs:
       - name: Require the Project credential
         shell: bash
         run: test -n "$GH_TOKEN" || { echo 'PORTFOLIO_PROJECT_TOKEN is not configured' >&2; exit 1; }
-      - name: Audit or reconcile open items
+      - name: Audit or reconcile open items and Status
         shell: bash
         run: ./scripts/reconcile-portfolio-project "${{ github.event_name == 'schedule' && 'reconcile' || inputs.mode }}"
