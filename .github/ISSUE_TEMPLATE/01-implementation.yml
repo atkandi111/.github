@@ -1,20 +1,16 @@
 name: Implementation issue
-description: Publish and immediately queue one Codex implementation in this repository.
+description: Review and authorize one Codex implementation in this repository.
 title: ""
 labels: []
 body:
   - type: markdown
     attributes:
       value: |
-        Publishing this Issue is the queue action. For cross-repository work, create one separately authorized Implementation Issue per repository. A parent that only coordinates subissues must use Planning / deferred instead.
-  - type: textarea
-    id: codex-authorization
-    attributes:
-      label: Codex authorization
-      description: Keep this prefilled instruction unchanged. It is what queues the repository-scoped task.
-      value: "@codex implement this issue in this repository. Open one draft pull request and complete its Merge Brief."
-    validations:
-      required: true
+        Publish this Issue after its repository-scoped contract is reviewed. Publishing records the contract but does not start Codex. To queue the implementation, post this exact top-level Issue comment after publication:
+
+        `@codex implement this issue in this repository. Open one draft pull request and complete its Merge Brief.`
+
+        For cross-repository work, create one separately authorized Implementation Issue and trigger comment per repository. A parent that only coordinates subissues must use Planning / deferred instead.
   - type: textarea
     id: outcome
     attributes:

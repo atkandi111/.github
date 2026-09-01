@@ -39,14 +39,23 @@ def test_issue_and_handoff_contract() -> None:
     implementation = read("templates/client/.github/ISSUE_TEMPLATE/01-implementation.yml")
     planning = read("templates/client/.github/ISSUE_TEMPLATE/02-planning.yml")
     brief = read("templates/client/.github/pull_request_template.md")
-    require("@codex implement this issue" in implementation, "implementation Issue is not the queue action")
+    require("@codex implement this issue" in implementation, "implementation trigger comment missing")
     require(
-        "type: textarea\n    id: codex-authorization" in implementation,
-        "Codex authorization is not a submitted Issue field",
+        "Publishing records the contract but does not start Codex" in implementation,
+        "Issue publication boundary missing",
     )
-    require("value: \"@codex implement this issue" in implementation, "queue instruction is not prefilled")
+    require(
+        "type: textarea\n    id: codex-authorization" not in implementation,
+        "Codex trigger must not be a submitted Issue-body field",
+    )
+    require("exact top-level Issue comment" in implementation, "top-level comment trigger is unclear")
     require("one draft pull request" in implementation, "one-Issue/one-PR contract missing")
     require("does not authorize or start Codex" in planning, "planning opt-out boundary missing")
+    readme = read("README.md")
+    cloud_setup = read("docs/cloud-setup.md")
+    require("The explicit top-level Issue comment is the queue action" in readme, "README queue action drifted")
+    require("publishing the Issue body alone does not start a task" in cloud_setup, "canary trigger evidence missing")
+    require("Create PR" in readme and "Create PR" in cloud_setup, "Create PR handoff missing")
     for heading in ("Outcome", "Acceptance evidence", "Validation", "Review focus", "Risk and rollback"):
         require(heading in brief, f"Merge Brief is missing {heading}")
     require(

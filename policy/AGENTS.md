@@ -4,7 +4,7 @@ This is the shared default for Atkandi repositories. Repository-local `AGENTS.md
 
 ## Authorization and scope
 
-- An executable implementation Issue authorizes work only in the repository where it was published and normally results in one draft pull request.
+- A reviewed implementation Issue authorizes work only in the repository where it was published. Publishing records the contract but does not start Codex; the separate top-level trigger comment queues one task. Each task prepares one pull request, and after **Create PR** the operator must confirm or convert it to draft and verify the Merge Brief.
 - A planning/deferred parent is coordination-only. Do not implement it directly; follow a repository-specific Implementation Issue instead.
 - Never discover or modify another repository, request broader access, or create cross-repository work on your own. If another repository must change, report the need for a separately authorized Issue there.
 - Stay within the Issue's outcome, acceptance criteria, constraints, and explicit out-of-scope boundaries. Ask for human direction when missing product intent would materially change the result.
