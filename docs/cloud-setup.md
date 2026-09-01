@@ -28,8 +28,11 @@ Before enabling this as the normal queue path, publish one disposable Implementa
 - the exact new top-level owner comment starts exactly one task;
 - the task reads both the global and repository-local guidance;
 - it changes only the authorized repository;
-- it opens one draft pull request and completes the Merge Brief;
+- after the task completes, **Create PR** publishes one pull request;
+- the operator confirms or converts that pull request to draft and completes the repository Merge Brief;
 - CI runs without secrets and protected workflow paths are rejected;
 - closing/canceling the test leaves no deployed or persistent resource.
+
+The first D'EMAND canary confirmed this sequence: the initial Issue-body mention did not start a task, while the later top-level comment did. The task completed, **Create PR** published the branch, and the operator converted the pull request to draft before review. See [issue #60](https://github.com/atkandi111/demandph-website/issues/60) and [PR #61](https://github.com/atkandi111/demandph-website/pull/61).
 
 Issue-body mentions, quoted or edited text, and comments from other actors are unsupported. Keep the exact top-level owner comment as the single queue action; do not rebuild the former dispatcher.

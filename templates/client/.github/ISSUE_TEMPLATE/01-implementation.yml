@@ -12,6 +12,8 @@ body:
         When this repository is ready for its next implementation, the repository owner queues it by posting this exact new top-level comment without quoting or editing it:
 
         `@codex implement this issue in this repository. Open one draft pull request and complete its Merge Brief.`
+
+        After Codex finishes, use **Create PR**, confirm or convert the pull request to draft, and verify its Merge Brief before review.
   - type: textarea
     id: outcome
     attributes:

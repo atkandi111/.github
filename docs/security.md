@@ -2,7 +2,7 @@
 
 ## Authorization
 
-The executable contract is a published Implementation Issue in one repository, but publication alone does not start Codex. The repository owner's exact new top-level trigger comment authorizes one repository-scoped Codex Cloud task, normally producing one draft pull request. A Planning/deferred parent and the portfolio GitHub Project provide coordination and visibility only.
+The executable contract is a reviewed, published Implementation Issue in one repository, but publication alone does not start Codex. The repository owner's exact new top-level trigger comment authorizes one repository-scoped Codex Cloud task. Each task prepares one pull request; after **Create PR**, the operator confirms or converts it to draft and verifies the Merge Brief. A Planning/deferred parent and the portfolio GitHub Project provide coordination and visibility only.
 
 Codex Cloud's GitHub installation, user authorization, repository selection, and platform controls replace the former custom authorized-actor/label/kill-switch/attempt/concurrency guard. Do not recreate those controls inside this repository unless a demonstrated Cloud limitation makes one strictly necessary.
 

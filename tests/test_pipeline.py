@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 import importlib.util
-import json
 import os
 import pathlib
 import re
@@ -53,6 +52,7 @@ def test_issue_and_handoff_contract() -> None:
     )
     require("Publishing records a reviewed contract but does not start Codex" in implementation, "publish boundary missing")
     require("one draft pull request" in implementation, "one-Issue/one-PR contract missing")
+    require("Create PR" in implementation, "Create PR handoff missing from implementation form")
     require("docs/issue-planning.md" in implementation, "implementation Issue does not link planning guidance")
     require("does not authorize or start Codex" in planning, "planning opt-out boundary missing")
     require("docs/issue-planning.md" in planning, "planning Issue does not link planning guidance")
@@ -63,6 +63,11 @@ def test_issue_and_handoff_contract() -> None:
     ):
         require(contract in planning_guide, f"Issue planning guide is missing: {contract}")
         require(contract in policy, f"shared policy is missing Issue-planning context: {contract}")
+    readme = read("README.md")
+    cloud_setup = read("docs/cloud-setup.md")
+    require("owner's exact top-level" in readme, "README queue action drifted")
+    require("publishing the Issue alone does not start Codex" in cloud_setup, "canary trigger evidence missing")
+    require("Create PR" in readme and "Create PR" in cloud_setup, "Create PR handoff missing")
     for heading in ("Outcome", "Acceptance evidence", "Validation", "Review focus", "Risk and rollback"):
         require(heading in brief, f"Merge Brief is missing {heading}")
     require(

@@ -7,8 +7,9 @@
 | Part | Responsibility |
 | --- | --- |
 | Portfolio GitHub Project | Shows priority and status across repositories; native rules and the central reconciler keep open items present, but Project membership does not authorize execution. |
-| Repository Implementation Issue | Records the reviewed outcome; the owner's later exact top-level trigger queues one repository-scoped Codex task. |
-| Codex Cloud | Implements that Issue in its repository and opens a draft pull request. |
+| Repository Implementation Issue | Records the reviewed, repository-scoped implementation contract. |
+| Top-level `@codex` Issue comment | Queues one Codex Cloud task after the contract is published. |
+| Codex Cloud | Implements that Issue in its repository and prepares one pull request. |
 | `dev-platform` | Supplies shared policy, reusable CI, governance, Portfolio reconciliation, and starter templates. |
 | Application repositories | Hold product code, product context, and repository-specific commands and rules. |
 | Infrastructure repository | Holds infrastructure-as-code that Codex may edit and validate without persistent credentials. |
@@ -18,14 +19,14 @@
 
 1. Draft and review work before publishing it.
 2. Normally publish an **Implementation issue** in the repository that will change. It remains `Todo` until the repository owner posts the exact supported top-level Codex comment.
-3. Use **Planning / deferred issue** only when publication must not start Codex. A coordination-only parent can link separately authorized Implementation subissues in each affected repository.
-4. Codex implements in its authorized repository and completes the pull request's human-readable **Merge Brief**.
+3. When Codex finishes, use **Create PR**, confirm or convert the pull request to draft, and ensure its human-readable **Merge Brief** is complete.
+4. Use **Planning / deferred issue** only when publication must not start Codex. A coordination-only parent can link separately authorized Implementation subissues in each affected repository.
 5. Central reusable CI and optional naming governance verify the pull request without deployment credentials.
 6. A human reviews and merges. Separate trusted post-merge workflows perform deployments or persistent infrastructure changes.
 
 The owner's exact top-level `@codex implement this issue...` comment is the queue action. An Issue-body mention is not supported. There is no approval label, custom dispatcher, publisher, semantic classifier, AI reviewer, convergence controller, or auto-merge system.
 
-The exact top-level owner-comment path is the verified Issue-to-Codex entry point. Run the disposable canary in [the transition runbook](docs/transition.md) when onboarding another repository or Codex Cloud environment; Issue-body mentions remain unsupported.
+The D'EMAND canary proved the exact top-level owner-comment path; see [Cloud setup](docs/cloud-setup.md). Run the disposable canary when onboarding another repository or Codex Cloud environment; Issue-body mentions remain unsupported.
 
 Use [Issue planning](docs/issue-planning.md) to choose PR-sized units of work, decide when a parent or subissue is useful, and keep cross-repository authorization explicit before anything enters the execution path.
 
