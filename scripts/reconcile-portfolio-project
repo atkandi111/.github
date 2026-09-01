@@ -1,0 +1,87 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+mode=${1:-audit}
+case $mode in
+  audit|reconcile) ;;
+  *) echo 'usage: reconcile-portfolio-project [audit|reconcile]' >&2; exit 64 ;;
+esac
+
+command -v gh >/dev/null || { echo 'GitHub CLI is required' >&2; exit 1; }
+
+script_root=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
+inventory=${PORTFOLIO_REPOSITORIES_FILE:-$script_root/config/portfolio-repositories.txt}
+project_owner=${PORTFOLIO_PROJECT_OWNER:-atkandi111}
+project_number=${PORTFOLIO_PROJECT_NUMBER:-2}
+
+[[ -f $inventory ]] || { echo "repository inventory not found: $inventory" >&2; exit 1; }
+
+work_dir=$(mktemp -d)
+trap 'rm -rf -- "$work_dir"' EXIT
+members_file=$work_dir/members
+missing_file=$work_dir/missing
+seen_file=$work_dir/seen
+: > "$missing_file"
+: > "$seen_file"
+
+if ! gh project item-list "$project_number" --owner "$project_owner" --limit 10000 \
+    --format json --jq '.items[].content.url // empty' > "$members_file"; then
+  echo 'unable to read the Portfolio Project; verify token project access' >&2
+  exit 1
+fi
+LC_ALL=C sort -u -o "$members_file" "$members_file"
+
+repository_count=0
+while IFS= read -r repository; do
+  repository_count=$((repository_count + 1))
+  [[ $repository =~ ^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$ ]] || {
+    echo "invalid repository inventory entry: $repository" >&2
+    exit 1
+  }
+  ! grep -Fqx "$repository" "$seen_file" || { echo "duplicate repository: $repository" >&2; exit 1; }
+  echo "$repository" >> "$seen_file"
+
+  safe_name=${repository//\//_}
+  qualifying_file=$work_dir/$safe_name.qualifying
+  repository_missing_file=$work_dir/$safe_name.missing
+
+  gh issue list --repo "$repository" --state open --limit 1000 --json url --jq '.[].url' > "$qualifying_file"
+  gh pr list --repo "$repository" --state open --limit 1000 --json url --jq '.[].url' >> "$qualifying_file"
+  LC_ALL=C sort -u -o "$qualifying_file" "$qualifying_file"
+  comm -23 "$qualifying_file" "$members_file" > "$repository_missing_file"
+  cat "$repository_missing_file" >> "$missing_file"
+
+  qualifying_count=$(wc -l < "$qualifying_file" | tr -d ' ')
+  missing_count=$(wc -l < "$repository_missing_file" | tr -d ' ')
+  printf '%s: %s qualifying, %s missing\n' "$repository" "$qualifying_count" "$missing_count"
+  sed 's/^/  /' "$repository_missing_file"
+done < <(sed -E '/^[[:space:]]*(#|$)/d; s/[[:space:]]+$//' "$inventory")
+[[ $repository_count -gt 0 ]] || { echo 'repository inventory is empty' >&2; exit 1; }
+
+LC_ALL=C sort -u -o "$missing_file" "$missing_file"
+if [[ ! -s $missing_file ]]; then
+  echo 'Portfolio membership is complete.'
+  exit 0
+fi
+
+missing_count=$(wc -l < "$missing_file" | tr -d ' ')
+if [[ $mode == audit ]]; then
+  echo "$missing_count open items are missing from the Portfolio Project." >&2
+  exit 1
+fi
+
+while IFS= read -r url; do
+  gh project item-add "$project_number" --owner "$project_owner" --url "$url" >/dev/null
+  printf 'added %s\n' "$url"
+done < "$missing_file"
+
+after_file=$work_dir/members-after
+gh project item-list "$project_number" --owner "$project_owner" --limit 10000 \
+  --format json --jq '.items[].content.url // empty' > "$after_file"
+LC_ALL=C sort -u -o "$after_file" "$after_file"
+if comm -23 "$missing_file" "$after_file" | grep -q .; then
+  echo 'reconciliation finished but one or more additions could not be verified' >&2
+  exit 1
+fi
+
+echo "Reconciled $missing_count open items. Existing Project fields were not changed."

@@ -1,0 +1,6 @@
+# One active repository per line. Keep this list reviewed and alphabetized.
+atkandi111/Mahjongtale
+atkandi111/demandph-website
+atkandi111/dev-platform
+atkandi111/infrastructure
+atkandi111/rotary-binan-website
