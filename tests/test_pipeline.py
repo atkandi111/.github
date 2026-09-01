@@ -163,7 +163,9 @@ def test_portfolio_reconciliation_contract() -> None:
     require("schedule:" in workflow and "workflow_dispatch:" in workflow, "reconciliation triggers missing")
     require("contents: read" in workflow, "reconciliation workflow must keep repository access read-only")
     require("PORTFOLIO_PROJECT_TOKEN" in workflow, "Project credential contract missing")
-    require("gh project item-add" in reconciler, "reconciler cannot add missing items")
+    require("addProjectV2ItemById" in reconciler, "reconciler cannot add missing items")
+    require("gh project" not in reconciler, "reconciler relies on ambiguous gh project owner resolution")
+    require("projectV2(number: $number)" in reconciler, "Project ID is not queried from owner and number")
     for forbidden in ("item-delete", "item-archive", "item-edit"):
         require(forbidden not in reconciler, f"reconciler may modify existing Project data: {forbidden}")
     require("comm -23" in reconciler and "sort -u" in reconciler, "idempotent membership comparison missing")
