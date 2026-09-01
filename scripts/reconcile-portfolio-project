@@ -124,9 +124,17 @@ while IFS= read -r url; do
 done < "$missing_file"
 
 after_file=$work_dir/members-after
-list_project_members "$after_file"
-LC_ALL=C sort -u -o "$after_file" "$after_file"
-if comm -23 "$missing_file" "$after_file" | grep -q .; then
+verified=false
+for attempt in 1 2 3 4 5; do
+  list_project_members "$after_file"
+  LC_ALL=C sort -u -o "$after_file" "$after_file"
+  if ! comm -23 "$missing_file" "$after_file" | grep -q .; then
+    verified=true
+    break
+  fi
+  [[ $attempt -eq 5 ]] || sleep 2
+done
+if [[ $verified != true ]]; then
   echo 'reconciliation finished but one or more additions could not be verified' >&2
   exit 1
 fi

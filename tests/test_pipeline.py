@@ -169,6 +169,8 @@ def test_portfolio_reconciliation_contract() -> None:
     for forbidden in ("item-delete", "item-archive", "item-edit"):
         require(forbidden not in reconciler, f"reconciler may modify existing Project data: {forbidden}")
     require("comm -23" in reconciler and "sort -u" in reconciler, "idempotent membership comparison missing")
+    require("for attempt in 1 2 3 4 5" in reconciler, "eventual-consistency verification retry missing")
+    require(reconciler.count("addProjectV2ItemById") == 1, "Project mutation may be replayed during verification")
 
 
 def main() -> None:
