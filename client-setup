@@ -18,10 +18,35 @@ client_files=(
 usage() {
   printf '%s\n' \
     'usage:' \
+    '  ./client-setup onboard TARGET PLATFORM_OWNER/REPOSITORY CLIENT_OWNER/REPOSITORY' \
     '  ./client-setup install TARGET OWNER/REPOSITORY' \
     '  ./client-setup check TARGET' \
     '  ./client-setup install-canary TARGET OWNER/REPOSITORY COMMIT_SHA' \
     '  ./client-setup check-canary TARGET'
+}
+
+require_portfolio_registration() {
+  local repository=$1 inventory=$platform_root/config/portfolio-repositories.txt
+  [[ $repository =~ ^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$ ]] || {
+    echo 'invalid client repository: expected OWNER/REPOSITORY' >&2
+    return 64
+  }
+  grep -Fqx "$repository" "$inventory" || {
+    echo "client repository is not registered for Portfolio reconciliation: $repository" >&2
+    echo 'Add it to config/portfolio-repositories.txt through a reviewed dev-platform change first.' >&2
+    return 1
+  }
+}
+
+onboard_client() {
+  [[ $# -eq 3 ]] || { usage >&2; return 64; }
+  local target=$1 platform_repository=$2 client_repository=$3
+  require_portfolio_registration "$client_repository"
+  install_client main "$target" "$platform_repository"
+  printf '%s\n' \
+    'Portfolio onboarding remains:' \
+    '1. Run the Portfolio membership audit workflow.' \
+    '2. Verify one disposable Issue canary is added, then close it.'
 }
 
 absolute_directory() {
@@ -138,6 +163,7 @@ check_client() {
 }
 
 case ${1:-} in
+  onboard) shift; onboard_client "$@" ;;
   install) shift; install_client main "$@" ;;
   check) shift; check_client main "$@" ;;
   install-canary) shift; install_client canary "$@" ;;

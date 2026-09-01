@@ -1,0 +1,41 @@
+name: Portfolio Project reconciliation
+
+on:
+  schedule:
+    - cron: "17 * * * *"
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: Audit reports gaps; reconcile also adds missing open items.
+        required: true
+        default: audit
+        type: choice
+        options:
+          - audit
+          - reconcile
+
+permissions:
+  contents: read
+
+concurrency:
+  group: portfolio-project-reconciliation
+  cancel-in-progress: false
+
+jobs:
+  reconcile:
+    name: Reconcile Project membership
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      GH_TOKEN: ${{ secrets.PORTFOLIO_PROJECT_TOKEN }}
+    steps:
+      - name: Check out the reviewed inventory and reconciler
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          persist-credentials: false
+      - name: Require the Project credential
+        shell: bash
+        run: test -n "$GH_TOKEN" || { echo 'PORTFOLIO_PROJECT_TOKEN is not configured' >&2; exit 1; }
+      - name: Audit or reconcile open items
+        shell: bash
+        run: ./scripts/reconcile-portfolio-project "${{ github.event_name == 'schedule' && 'reconcile' || inputs.mode }}"
