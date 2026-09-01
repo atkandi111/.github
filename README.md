@@ -7,7 +7,7 @@
 | Part | Responsibility |
 | --- | --- |
 | Portfolio GitHub Project | Shows priority and status across repositories; native rules and the central reconciler keep open items present, but Project membership does not authorize execution. |
-| Repository Implementation Issue | Records the reviewed outcome and queues one repository-scoped Codex task when published. |
+| Repository Implementation Issue | Records the reviewed outcome; the owner's later exact top-level trigger queues one repository-scoped Codex task. |
 | Codex Cloud | Implements that Issue in its repository and opens a draft pull request. |
 | `dev-platform` | Supplies shared policy, reusable CI, governance, Portfolio reconciliation, and starter templates. |
 | Application repositories | Hold product code, product context, and repository-specific commands and rules. |
@@ -17,13 +17,13 @@
 ## Lean operating model
 
 1. Draft and review work before publishing it.
-2. Normally publish an **Implementation issue** in the repository that will change. Its `@codex` instruction starts one repository-scoped task and normally produces one draft pull request.
+2. Normally publish an **Implementation issue** in the repository that will change. It remains `Todo` until the repository owner posts the exact supported top-level Codex comment.
 3. Use **Planning / deferred issue** only when publication must not start Codex. A coordination-only parent can link separately authorized Implementation subissues in each affected repository.
 4. Codex implements in its authorized repository and completes the pull request's human-readable **Merge Brief**.
 5. Central reusable CI and optional naming governance verify the pull request without deployment credentials.
 6. A human reviews and merges. Separate trusted post-merge workflows perform deployments or persistent infrastructure changes.
 
-Publishing the implementation Issue is the queue action. There is no second approval label, custom dispatcher, publisher, semantic classifier, AI reviewer, convergence controller, or auto-merge system.
+The owner's exact top-level `@codex implement this issue...` comment is the queue action. An Issue-body mention is not supported. There is no approval label, custom dispatcher, publisher, semantic classifier, AI reviewer, convergence controller, or auto-merge system.
 
 The new Issue-to-Codex entry path is configured but is not operationally proven until the disposable canary in [the transition runbook](docs/transition.md) succeeds.
 
@@ -34,6 +34,7 @@ Use [Issue planning](docs/issue-planning.md) to choose PR-sized units of work, d
 - `policy/AGENTS.md`: portfolio-wide Codex defaults.
 - `.github/workflows/ci.yml`: reusable credential-free CI and protected-path enforcement.
 - `.github/workflows/governance.yml`: optional deterministic naming checks.
+- `.github/workflows/portfolio-project.yml`: centralized open-item and lifecycle Status reconciliation.
 - `templates/client/`: thin repository callers, Issue forms, Merge Brief, and local guidance skeletons.
 - `client-setup`: conservative installer and readiness checker for new repositories.
 

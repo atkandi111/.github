@@ -14,7 +14,7 @@ This runbook assumes the former custom pipeline has no production users. Keep ex
 1. Merge the `dev-platform` transition first. Run `./tests/run.sh` and confirm reusable workflow access is still enabled for the private client repositories.
 2. Merge each client transition. Re-run its pull-request checks after `dev-platform@main` contains the new workflow contract.
 3. In each Codex Cloud environment, grant only that repository, install `policy/AGENTS.md` using `docs/cloud-setup.md`, and add no deployment or infrastructure credential.
-4. Run one disposable low-risk Issue-to-draft-PR canary. Do not depend on initial-body mention behavior until this passes.
+4. Run one disposable low-risk Issue-to-draft-PR canary using the owner's exact new top-level trigger comment. Do not put the trigger in the Issue body.
 5. After the canary, remove the obsolete `OPENAI_API_KEY` secret and `AGENT_*` / `PIPELINE_*` variables from repositories that had the former pipeline. Remove the old `agent` label when no historical workflow depends on it.
 6. Require the deterministic CI check on protected `main` branches. Keep production environments and infrastructure apply approvals separate.
 
@@ -28,12 +28,12 @@ This runbook assumes the former custom pipeline has no production users. Keep ex
 
 - Do not bulk-edit or trigger open Issues.
 - Existing backlog and planning-parent Issues remain coordination records. They never become executable merely because they are in the portfolio Project or carry an old label.
-- When an existing repository Issue is ready to execute, confirm that it has an intended outcome, acceptance criteria, constraints, and out-of-scope section, then add one `@codex implement this issue...` instruction. That explicit action puts it in the queue.
+- When an existing repository Issue is ready to execute, confirm that it has an intended outcome, acceptance criteria, constraints, and out-of-scope section. The repository owner then posts the exact supported top-level `@codex implement this issue...` comment once.
 - Cross-repository work needs one separately authorized Implementation Issue in each affected repository. A parent that only coordinates them remains Planning/deferred; a parent that itself authorizes repository work may be an Implementation Issue.
 
 ## New Issues
 
-- Use **Implementation issue** by default: publishing immediately enqueues one repository-scoped Codex task and normally one draft PR.
+- Use **Implementation issue** by default for a reviewed, executable contract. Publishing leaves it in `Todo`; the owner's later exact top-level trigger comment queues one repository-scoped Codex task and normally one draft PR.
 - Use **Planning / deferred issue** only when publication should not start Codex, including a coordination-only parent.
 - Labels may communicate status but never grant or revoke execution authority.
 - Keep status and priority in the existing portfolio GitHub Project. Project fields do not grant authority.

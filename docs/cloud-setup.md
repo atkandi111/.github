@@ -22,13 +22,14 @@ Repository-local `AGENTS.md` remains the source for repository commands and prod
 
 ## Required canary
 
-Before enabling this as the normal queue path, publish one disposable implementation Issue in a low-risk repository and verify:
+Before enabling this as the normal queue path, publish one disposable Implementation Issue in a low-risk repository, then post the exact owner trigger comment and verify:
 
-- the initial Issue-body `@codex` mention starts exactly one task;
+- publishing the Issue alone does not start Codex;
+- the exact new top-level owner comment starts exactly one task;
 - the task reads both the global and repository-local guidance;
 - it changes only the authorized repository;
 - it opens one draft pull request and completes the Merge Brief;
 - CI runs without secrets and protected workflow paths are rejected;
 - closing/canceling the test leaves no deployed or persistent resource.
 
-If initial-body mentions do not start reliably, keep the same Issue form but post `@codex implement this issue...` as the single manual queue action. Do not rebuild the former dispatcher.
+Issue-body mentions, quoted or edited text, and comments from other actors are unsupported. Keep the exact top-level owner comment as the single queue action; do not rebuild the former dispatcher.

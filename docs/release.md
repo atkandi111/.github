@@ -14,7 +14,7 @@ Client callers track `atkandi111/dev-platform@main`. A merge to `main` is theref
 
 Revert the platform commit on `main` to restore the prior reviewed workflow and template source. Existing client callers then use the restored reusable workflow on their next run. Repository-local template copies do not change automatically; revert or update those explicitly where adopted.
 
-If Codex Cloud behavior is unreliable, stop publishing implementation Issues or omit the `@codex` instruction while continuing normal manual development. There is no repository secret, custom queue service, or publisher to disable.
+If Codex Cloud behavior is unreliable, stop posting the exact owner trigger comment while continuing to publish and refine implementation contracts or develop manually. There is no repository secret, custom queue service, or publisher to disable.
 
 ## Dependency policy
 

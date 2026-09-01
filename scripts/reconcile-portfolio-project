@@ -8,9 +8,12 @@ case $mode in
 esac
 
 command -v gh >/dev/null || { echo 'GitHub CLI is required' >&2; exit 1; }
+command -v jq >/dev/null || { echo 'jq is required' >&2; exit 1; }
+command -v python3 >/dev/null || { echo 'Python 3 is required' >&2; exit 1; }
 
 script_root=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
 inventory=${PORTFOLIO_REPOSITORIES_FILE:-$script_root/config/portfolio-repositories.txt}
+status_planner=$script_root/scripts/portfolio_status.py
 project_owner=${PORTFOLIO_PROJECT_OWNER:-atkandi111}
 project_number=${PORTFOLIO_PROJECT_NUMBER:-2}
 
@@ -39,14 +42,89 @@ add_item_mutation='mutation($projectId: ID!, $contentId: ID!) {
     item { id }
   }
 }'
+project_configuration_query='query($login: String!, $number: Int!) {
+  user(login: $login) {
+    projectV2(number: $number) {
+      fields(first: 50) {
+        nodes {
+          ... on ProjectV2SingleSelectField {
+            id
+            name
+            options { id name }
+          }
+        }
+      }
+    }
+  }
+}'
+status_items_query='query($login: String!, $number: Int!, $endCursor: String) {
+  user(login: $login) {
+    projectV2(number: $number) {
+      items(first: 50, after: $endCursor) {
+        nodes {
+          id
+          content {
+            __typename
+            ... on Issue {
+              number
+              url
+              state
+              stateReason
+              repository { nameWithOwner owner { login } }
+            }
+            ... on PullRequest {
+              number
+              url
+              state
+              isDraft
+              reviewDecision
+              mergedAt
+              repository { nameWithOwner owner { login } }
+            }
+          }
+          fieldValues(first: 50) {
+            nodes {
+              __typename
+              ... on ProjectV2ItemFieldSingleSelectValue {
+                name
+                field { ... on ProjectV2SingleSelectField { name } }
+              }
+              ... on ProjectV2ItemFieldPullRequestValue {
+                field { ... on ProjectV2Field { name } }
+                pullRequests(first: 20) {
+                  nodes { state isDraft reviewDecision mergedAt }
+                }
+              }
+            }
+          }
+        }
+        pageInfo { hasNextPage endCursor }
+      }
+    }
+  }
+}'
+update_status_mutation='mutation($projectId: ID!, $itemId: ID!, $fieldId: ID!, $optionId: String!) {
+  updateProjectV2ItemFieldValue(input: {
+    projectId: $projectId
+    itemId: $itemId
+    fieldId: $fieldId
+    value: {singleSelectOptionId: $optionId}
+  }) {
+    projectV2Item { id }
+  }
+}'
 
 [[ -f $inventory ]] || { echo "repository inventory not found: $inventory" >&2; exit 1; }
+[[ -f $status_planner ]] || { echo "status planner not found: $status_planner" >&2; exit 1; }
 
 work_dir=$(mktemp -d)
 trap 'rm -rf -- "$work_dir"' EXIT
 members_file=$work_dir/members
 missing_file=$work_dir/missing
 seen_file=$work_dir/seen
+status_raw_file=$work_dir/status-raw
+status_input_file=$work_dir/status-input
+status_plan_file=$work_dir/status-plan
 : > "$missing_file"
 : > "$seen_file"
 
@@ -62,6 +140,100 @@ list_project_members() {
   gh api graphql --paginate -f query="$members_query" -F login="$project_owner" \
     -F number="$project_number" --jq '.data.user.projectV2.items.nodes[].content.url // empty' \
     > "$destination"
+}
+
+list_project_status_items() {
+  local destination=$1
+  gh api graphql --paginate -f query="$status_items_query" -F login="$project_owner" \
+    -F number="$project_number" --jq '
+      .data.user.projectV2.items.nodes[]
+      | select(.content.__typename == "Issue" or .content.__typename == "PullRequest")
+      | {
+          item_id: .id,
+          url: .content.url,
+          kind: .content.__typename,
+          repository: .content.repository.nameWithOwner,
+          owner: .content.repository.owner.login,
+          number: .content.number,
+          state: .content.state,
+          state_reason: (.content.stateReason // null),
+          is_draft: (.content.isDraft // false),
+          review_decision: (.content.reviewDecision // null),
+          merged_at: (.content.mergedAt // null),
+          current_status: ([
+            .fieldValues.nodes[]
+            | select(.__typename == "ProjectV2ItemFieldSingleSelectValue" and .field.name == "Status")
+            | .name
+          ][0] // null),
+          linked_pull_requests: ([
+            .fieldValues.nodes[]
+            | select(.__typename == "ProjectV2ItemFieldPullRequestValue" and .field.name == "Linked pull requests")
+            | .pullRequests.nodes[]
+            | {
+                state: .state,
+                is_draft: .isDraft,
+                review_decision: (.reviewDecision // null),
+                merged_at: (.mergedAt // null)
+              }
+          ])
+        }' > "$destination"
+}
+
+load_status_configuration() {
+  local configuration=$work_dir/project-configuration
+  if ! gh api graphql -f query="$project_configuration_query" -F login="$project_owner" \
+      -F number="$project_number" > "$configuration"; then
+    echo 'unable to read Portfolio Status configuration; verify token project access' >&2
+    exit 1
+  fi
+  status_field_count=$(jq '[.data.user.projectV2.fields.nodes[] | select(.name == "Status")] | length' "$configuration")
+  [[ $status_field_count == 1 ]] || { echo 'Portfolio Project must contain exactly one Status field' >&2; exit 1; }
+  status_field_id=$(jq -r '.data.user.projectV2.fields.nodes[] | select(.name == "Status") | .id' "$configuration")
+  for status_name in 'Todo' 'In Progress' 'For Review' 'Done'; do
+    option_count=$(jq --arg name "$status_name" '[.data.user.projectV2.fields.nodes[] | select(.name == "Status") | .options[] | select(.name == $name)] | length' "$configuration")
+    [[ $option_count == 1 ]] || { echo "Portfolio Status must contain exactly one option named: $status_name" >&2; exit 1; }
+  done
+  todo_option_id=$(jq -r '.data.user.projectV2.fields.nodes[] | select(.name == "Status") | .options[] | select(.name == "Todo") | .id' "$configuration")
+  in_progress_option_id=$(jq -r '.data.user.projectV2.fields.nodes[] | select(.name == "Status") | .options[] | select(.name == "In Progress") | .id' "$configuration")
+  for_review_option_id=$(jq -r '.data.user.projectV2.fields.nodes[] | select(.name == "Status") | .options[] | select(.name == "For Review") | .id' "$configuration")
+  done_option_id=$(jq -r '.data.user.projectV2.fields.nodes[] | select(.name == "Status") | .options[] | select(.name == "Done") | .id' "$configuration")
+}
+
+build_status_input() {
+  if ! list_project_status_items "$status_raw_file"; then
+    echo 'unable to list Portfolio Project status data; verify token project access' >&2
+    exit 1
+  fi
+  : > "$status_input_file"
+  while IFS= read -r item_json; do
+    repository=$(jq -r '.repository' <<< "$item_json")
+    grep -Fqx "$repository" "$seen_file" || continue
+    kind=$(jq -r '.kind' <<< "$item_json")
+    owner_triggered=false
+    if [[ $kind == Issue ]]; then
+      number=$(jq -r '.number' <<< "$item_json")
+      owner=$(jq -r '.owner' <<< "$item_json")
+      comments_file=$work_dir/issue-comments
+      if ! gh api --paginate --slurp "repos/$repository/issues/$number/comments?per_page=100" > "$comments_file"; then
+        echo "unable to read Issue comments: $repository#$number" >&2
+        exit 1
+      fi
+      owner_triggered=$(python3 "$status_planner" trigger --owner "$owner" < "$comments_file")
+      [[ $owner_triggered == true || $owner_triggered == false ]] || { echo 'invalid trigger decision' >&2; exit 1; }
+    fi
+    jq -c --argjson owner_triggered "$owner_triggered" '. + {owner_triggered: $owner_triggered}' \
+      <<< "$item_json" >> "$status_input_file"
+  done < "$status_raw_file"
+}
+
+option_id_for_status() {
+  case $1 in
+    Todo) echo "$todo_option_id" ;;
+    'In Progress') echo "$in_progress_option_id" ;;
+    'For Review') echo "$for_review_option_id" ;;
+    Done) echo "$done_option_id" ;;
+    *) echo "refusing unknown desired Status: $1" >&2; return 1 ;;
+  esac
 }
 
 if ! list_project_members "$members_file"; then
@@ -98,45 +270,98 @@ done < <(sed -E '/^[[:space:]]*(#|$)/d; s/[[:space:]]+$//' "$inventory")
 [[ $repository_count -gt 0 ]] || { echo 'repository inventory is empty' >&2; exit 1; }
 
 LC_ALL=C sort -u -o "$missing_file" "$missing_file"
-if [[ ! -s $missing_file ]]; then
-  echo 'Portfolio membership is complete.'
-  exit 0
-fi
+membership_drift=false
+if [[ -s $missing_file ]]; then
+  membership_drift=true
+  missing_count=$(wc -l < "$missing_file" | tr -d ' ')
+  if [[ $mode == audit ]]; then
+    echo "$missing_count open items are missing from the Portfolio Project." >&2
+  else
+    while IFS= read -r url; do
+      [[ $url =~ ^https://github.com/([^/]+)/([^/]+)/(issues|pull)/([0-9]+)$ ]] || {
+        echo "refusing unexpected item URL: $url" >&2
+        exit 1
+      }
+      repository=${BASH_REMATCH[1]}/${BASH_REMATCH[2]}
+      number=${BASH_REMATCH[4]}
+      content_id=$(gh api "repos/$repository/issues/$number" --jq '.node_id')
+      [[ -n $content_id ]] || { echo "unable to resolve content ID: $url" >&2; exit 1; }
+      gh api graphql -f query="$add_item_mutation" -f projectId="$project_id" \
+        -f contentId="$content_id" --silent
+      printf 'added %s\n' "$url"
+    done < "$missing_file"
 
-missing_count=$(wc -l < "$missing_file" | tr -d ' ')
-if [[ $mode == audit ]]; then
-  echo "$missing_count open items are missing from the Portfolio Project." >&2
-  exit 1
-fi
-
-while IFS= read -r url; do
-  [[ $url =~ ^https://github.com/([^/]+)/([^/]+)/(issues|pull)/([0-9]+)$ ]] || {
-    echo "refusing unexpected item URL: $url" >&2
-    exit 1
-  }
-  repository=${BASH_REMATCH[1]}/${BASH_REMATCH[2]}
-  number=${BASH_REMATCH[4]}
-  content_id=$(gh api "repos/$repository/issues/$number" --jq '.node_id')
-  [[ -n $content_id ]] || { echo "unable to resolve content ID: $url" >&2; exit 1; }
-  gh api graphql -f query="$add_item_mutation" -f projectId="$project_id" \
-    -f contentId="$content_id" --silent
-  printf 'added %s\n' "$url"
-done < "$missing_file"
-
-after_file=$work_dir/members-after
-verified=false
-for attempt in 1 2 3 4 5; do
-  list_project_members "$after_file"
-  LC_ALL=C sort -u -o "$after_file" "$after_file"
-  if ! comm -23 "$missing_file" "$after_file" | grep -q .; then
-    verified=true
-    break
+    after_file=$work_dir/members-after
+    verified=false
+    for attempt in 1 2 3 4 5; do
+      list_project_members "$after_file"
+      LC_ALL=C sort -u -o "$after_file" "$after_file"
+      if ! comm -23 "$missing_file" "$after_file" | grep -q .; then
+        verified=true
+        break
+      fi
+      [[ $attempt -eq 5 ]] || sleep 2
+    done
+    if [[ $verified != true ]]; then
+      echo 'reconciliation finished but one or more additions could not be verified' >&2
+      exit 1
+    fi
+    membership_drift=false
+    echo "Reconciled $missing_count open items."
   fi
-  [[ $attempt -eq 5 ]] || sleep 2
-done
-if [[ $verified != true ]]; then
-  echo 'reconciliation finished but one or more additions could not be verified' >&2
+else
+  echo 'Portfolio membership is complete.'
+fi
+
+load_status_configuration
+build_status_input
+python3 "$status_planner" plan < "$status_input_file" > "$status_plan_file"
+
+status_drift=false
+if [[ -s $status_plan_file ]]; then
+  status_drift=true
+  status_count=$(wc -l < "$status_plan_file" | tr -d ' ')
+  while IFS= read -r update_json; do
+    url=$(jq -r '.url' <<< "$update_json")
+    current=$(jq -r '.current // "unset"' <<< "$update_json")
+    desired=$(jq -r '.desired' <<< "$update_json")
+    printf '  %s: %s -> %s\n' "$url" "$current" "$desired"
+  done < "$status_plan_file"
+
+  if [[ $mode == reconcile ]]; then
+    while IFS= read -r update_json; do
+      item_id=$(jq -r '.item_id' <<< "$update_json")
+      desired=$(jq -r '.desired' <<< "$update_json")
+      option_id=$(option_id_for_status "$desired")
+      gh api graphql -f query="$update_status_mutation" -f projectId="$project_id" \
+        -f itemId="$item_id" -f fieldId="$status_field_id" -f optionId="$option_id" --silent
+    done < "$status_plan_file"
+
+    after_status_file=$work_dir/status-after
+    verified=false
+    for attempt in 1 2 3 4 5; do
+      list_project_status_items "$after_status_file"
+      if python3 "$status_planner" verify --plan "$status_plan_file" < "$after_status_file"; then
+        verified=true
+        break
+      fi
+      [[ $attempt -eq 5 ]] || sleep 2
+    done
+    if [[ $verified != true ]]; then
+      echo 'status reconciliation finished but one or more updates could not be verified' >&2
+      exit 1
+    fi
+    status_drift=false
+    echo "Reconciled $status_count Project Status values."
+  else
+    echo "$status_count Project Status values are out of sync." >&2
+  fi
+else
+  echo 'Portfolio Status values are synchronized.'
+fi
+
+if [[ $mode == audit && ( $membership_drift == true || $status_drift == true ) ]]; then
   exit 1
 fi
 
-echo "Reconciled $missing_count open items. Existing Project fields were not changed."
+echo 'Priority, Waiting On, and unrelated Project fields were not changed.'

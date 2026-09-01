@@ -1,22 +1,17 @@
 name: Implementation issue
-description: Publish and immediately queue one Codex implementation in this repository.
+description: Publish a reviewed contract; the owner delegates it later with one exact comment.
 title: ""
 labels: []
 body:
   - type: markdown
     attributes:
       value: |
-        Publishing this Issue is the queue action. Choose one cohesive, reviewable repository outcome that should normally produce one pull request. Combine tightly coupled same-repository details; split independent or cross-repository outcomes. A parent that only coordinates subissues must use Planning / deferred instead.
+        Publishing records a reviewed contract but does not start Codex. Choose one cohesive, reviewable repository outcome that should normally produce one pull request. Combine tightly coupled same-repository details; split independent or cross-repository outcomes. A parent that only coordinates subissues must use Planning / deferred instead.
 
         Planning guide: https://github.com/atkandi111/dev-platform/blob/main/docs/issue-planning.md
-  - type: textarea
-    id: codex-authorization
-    attributes:
-      label: Codex authorization
-      description: Keep this prefilled instruction unchanged. It is what queues the repository-scoped task.
-      value: "@codex implement this issue in this repository. Open one draft pull request and complete its Merge Brief."
-    validations:
-      required: true
+        When this repository is ready for its next implementation, the repository owner queues it by posting this exact new top-level comment without quoting or editing it:
+
+        `@codex implement this issue in this repository. Open one draft pull request and complete its Merge Brief.`
   - type: textarea
     id: outcome
     attributes:

@@ -1,6 +1,6 @@
 # Issue planning
 
-Use this guide while drafting and reviewing Issues, before implementation starts. An Issue is the human-reviewed contract for a unit of work; the execution pipeline begins only when an Implementation Issue is published with its prefilled `@codex` instruction.
+Use this guide while drafting and reviewing Issues, before implementation starts. An Implementation Issue is the human-reviewed contract for a unit of work; publishing it does not start Codex.
 
 ## Choose the unit of work
 
@@ -36,8 +36,9 @@ Prefer outcome and constraints over prescribing internal implementation details 
 
 1. Draft and debate the Issue until you want the work to run.
 2. Choose Implementation only for work that is ready to execute; otherwise choose Planning / deferred.
-3. Publishing an Implementation Issue is the queue action. Project fields and labels provide visibility but do not authorize execution.
-4. Codex implements only that Issue in that repository and normally opens one draft pull request with a completed Merge Brief.
-5. Human pull-request review and merge remain the approval point for persistent real-world changes.
+3. The repository owner queues a ready Implementation Issue by posting this exact new top-level comment: `@codex implement this issue in this repository. Open one draft pull request and complete its Merge Brief.`
+4. Issue-body text, quoted or edited text, other actors, Project fields, and labels do not authorize execution.
+5. Codex implements only that Issue in that repository and normally opens one draft pull request with a completed Merge Brief.
+6. Human pull-request review and merge remain the approval point for persistent real-world changes.
 
 For the current rollout state and canary requirement, see [the transition runbook](transition.md).
