@@ -46,6 +46,13 @@ body:
     validations:
       required: true
   - type: textarea
+    id: documentation-impact
+    attributes:
+      label: Documentation impact
+      description: Optional. Note any README, runbook, architecture, product, or developer guidance that may need to change with the implementation.
+    validations:
+      required: false
+  - type: textarea
     id: validation
     attributes:
       label: Expected validation

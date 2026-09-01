@@ -21,4 +21,4 @@ Document only rules that differ from, or add necessary context to, the portfolio
 
 ## Done
 
-Keep changes within the Issue, add appropriate tests, run applicable checks, and complete the pull request's Merge Brief. If a meaningful user-visible or product decision is unspecified, stop and state the missing decision.
+Keep changes within the Issue, update relevant documentation when durable behavior or workflow changes, add appropriate tests, run applicable checks, and complete the pull request's Merge Brief. If a meaningful user-visible or product decision is unspecified, stop and state the missing decision.
