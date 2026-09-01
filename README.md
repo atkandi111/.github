@@ -7,8 +7,9 @@
 | Part | Responsibility |
 | --- | --- |
 | Portfolio GitHub Project | Shows priority and status across repositories; native rules and the central reconciler keep open items present, but Project membership does not authorize execution. |
-| Repository Implementation Issue | Records the reviewed outcome and queues one repository-scoped Codex task when published. |
-| Codex Cloud | Implements that Issue in its repository and opens a draft pull request. |
+| Repository Implementation Issue | Records the reviewed, repository-scoped implementation contract. |
+| Top-level `@codex` Issue comment | Queues one Codex Cloud task after the contract is published. |
+| Codex Cloud | Implements that Issue in its repository and prepares one pull request. |
 | `dev-platform` | Supplies shared policy, reusable CI, governance, Portfolio reconciliation, and starter templates. |
 | Application repositories | Hold product code, product context, and repository-specific commands and rules. |
 | Infrastructure repository | Holds infrastructure-as-code that Codex may edit and validate without persistent credentials. |
@@ -17,15 +18,16 @@
 ## Lean operating model
 
 1. Draft and review work before publishing it.
-2. Normally publish an **Implementation issue** in the repository that will change. Its `@codex` instruction starts one repository-scoped task and normally produces one draft pull request.
-3. Use **Planning / deferred issue** only when publication must not start Codex. A coordination-only parent can link separately authorized Implementation subissues in each affected repository.
-4. Codex implements in its authorized repository and completes the pull request's human-readable **Merge Brief**.
-5. Central reusable CI and optional naming governance verify the pull request without deployment credentials.
-6. A human reviews and merges. Separate trusted post-merge workflows perform deployments or persistent infrastructure changes.
+2. Normally publish an **Implementation issue** in the repository that will change. Publication records the reviewed contract but does not start Codex.
+3. Post the exact top-level `@codex implement this issue...` comment shown by the form to start one repository-scoped task.
+4. When the task finishes, use **Create PR**, confirm or convert the pull request to draft, and ensure its human-readable **Merge Brief** is complete.
+5. Use **Planning / deferred issue** for coordination that must not start Codex. A coordination-only parent can link separately authorized Implementation subissues in each affected repository.
+6. Central reusable CI and optional naming governance verify the pull request without deployment credentials.
+7. A human reviews and merges. Separate trusted post-merge workflows perform deployments or persistent infrastructure changes.
 
-Publishing the implementation Issue is the queue action. There is no second approval label, custom dispatcher, publisher, semantic classifier, AI reviewer, convergence controller, or auto-merge system.
+The explicit top-level Issue comment is the queue action. There is no approval label, custom dispatcher, publisher, semantic classifier, AI reviewer, convergence controller, or auto-merge system.
 
-The new Issue-to-Codex entry path is configured but is not operationally proven until the disposable canary in [the transition runbook](docs/transition.md) succeeds.
+The D'EMAND canary proved the explicit-comment entry path; see [Cloud setup](docs/cloud-setup.md). Each additional repository still needs its own environment check before relying on the path there.
 
 ## Centralized pieces
 
