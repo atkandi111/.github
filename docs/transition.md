@@ -6,8 +6,8 @@ This runbook assumes the former custom pipeline has no production users. Keep ex
 
 - The platform and client transition pull requests are merged, and centralized reusable CI is active.
 - Portfolio reconciliation is active, the initial open-item backfill is complete, and its membership and lifecycle canary passed.
-- Codex Cloud environment setup still needs to be confirmed for each repository, and one disposable end-to-end Implementation-Issue-to-draft-PR canary remains before the new entry path should be treated as proven.
-- Keep obsolete pipeline secrets, variables, and labels until that canary succeeds; then remove them using the sequence below.
+- The exact top-level owner-comment path has been verified. Each newly onboarded repository or Codex Cloud environment still needs the disposable end-to-end Implementation-Issue-to-draft-PR canary before it relies on that path.
+- Keep obsolete pipeline secrets, variables, and labels in an unverified repository until its canary succeeds; then remove them using the sequence below.
 
 ## Merge order
 

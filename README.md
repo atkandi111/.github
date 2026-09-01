@@ -25,7 +25,7 @@
 
 The owner's exact top-level `@codex implement this issue...` comment is the queue action. An Issue-body mention is not supported. There is no approval label, custom dispatcher, publisher, semantic classifier, AI reviewer, convergence controller, or auto-merge system.
 
-The new Issue-to-Codex entry path is configured but is not operationally proven until the disposable canary in [the transition runbook](docs/transition.md) succeeds.
+The exact top-level owner-comment path is the verified Issue-to-Codex entry point. Run the disposable canary in [the transition runbook](docs/transition.md) when onboarding another repository or Codex Cloud environment; Issue-body mentions remain unsupported.
 
 Use [Issue planning](docs/issue-planning.md) to choose PR-sized units of work, decide when a parent or subissue is useful, and keep cross-repository authorization explicit before anything enters the execution path.
 
@@ -59,6 +59,6 @@ For a new repository:
 ./client-setup check /path/to/repository
 ```
 
-The installer refuses to overwrite existing files. Existing repositories should merge the templates deliberately. Configure the Codex Cloud environment separately using [docs/cloud-setup.md](docs/cloud-setup.md), then run the canary described there before relying on Issue mentions.
+The installer refuses to overwrite existing files. Existing repositories should merge the templates deliberately. Configure the Codex Cloud environment separately using [docs/cloud-setup.md](docs/cloud-setup.md), then run the canary described there before relying on the owner-comment trigger in that environment.
 
 For merge order, existing work, existing Issues, cleanup, and rollback, follow [docs/transition.md](docs/transition.md).
