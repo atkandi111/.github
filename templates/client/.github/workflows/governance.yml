@@ -12,7 +12,7 @@ permissions:
 jobs:
   validate:
     name: Governance
-    uses: YOUR_ORG/dev-platform/.github/workflows/governance.yml@main
+    uses: YOUR_OWNER/.github/.github/workflows/governance.yml@main
     with:
       record_kind: ${{ github.event_name == 'issues' && 'issue' || 'pull_request' }}
       record_title: ${{ github.event_name == 'issues' && github.event.issue.title || github.event.pull_request.title }}

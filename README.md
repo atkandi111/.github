@@ -1,6 +1,6 @@
-# Development platform
+# Atkandi developer platform
 
-`dev-platform` is the reviewed source for the portfolio's shared Codex policy, deterministic pull-request checks, governance conventions, and repository templates. Codex Cloud performs implementation and branch publication; this repository does not contain a custom agent runner or publisher.
+The public account-level `.github` repository is the reviewed source for the portfolio's shared Codex policy, deterministic pull-request checks, governance conventions, and GitHub-native default templates. Codex Cloud performs implementation and branch publication; this repository does not contain a custom agent runner or publisher.
 
 ## Architecture at a glance
 
@@ -11,7 +11,7 @@
 | Top-level `@codex` Issue comment | The owner's exact native trigger; the coordinator posts it immediately after creating ready work. |
 | Codex Cloud | Implements that Issue on one issue-specific branch in its repository. |
 | Coordinator | Publishes or updates the draft PR, verifies its SHA and CI, invokes independent review, and hands it to the owner. |
-| `dev-platform` | Supplies shared policy, reusable CI, governance, Portfolio reconciliation, and starter templates. |
+| Account `.github` repository | Supplies shared policy, reusable CI, governance, Portfolio reconciliation, and account-default Issue/PR templates. |
 | Application repositories | Hold product code, product context, and repository-specific commands and rules. |
 | Infrastructure repository | Holds infrastructure-as-code that Codex may edit and validate without persistent credentials. |
 | Trusted post-merge workflows | Perform deployments and persistent infrastructure changes after human approval. |
@@ -39,10 +39,11 @@ Use [Issue planning](docs/issue-planning.md) for unit sizing, concurrency, depen
 - `.github/workflows/ci.yml`: reusable credential-free CI and protected-path enforcement.
 - `.github/workflows/governance.yml`: optional deterministic naming checks.
 - `.github/workflows/portfolio-project.yml`: centralized open-item and lifecycle Status reconciliation.
-- `templates/client/`: thin repository callers, Issue forms, Merge Brief, and local guidance skeletons.
+- `.github/ISSUE_TEMPLATE/` and `.github/pull_request_template.md`: account defaults inherited by repositories that do not define local overrides.
+- `templates/client/`: thin repository callers and local guidance skeletons.
 - `client-setup`: conservative installer and readiness checker for new repositories.
 
-Client workflow callers reference `atkandi111/dev-platform@main`, so reviewed platform workflow updates propagate automatically. Repository-local `AGENTS.md` files remain necessary for native GitHub review and repository-specific commands. In Codex Cloud, install the shared policy as global guidance so changes on `main` are fetched before each task; see [Cloud setup](docs/cloud-setup.md).
+Client workflow callers reference `atkandi111/.github@main`, so reviewed platform workflow updates propagate automatically. GitHub supplies the account-default Issue forms and Merge Brief to current and future repositories that do not define local templates. Repository-local `AGENTS.md` files remain necessary for native GitHub review and repository-specific commands. In Codex Cloud, install the public shared policy as global guidance so changes on `main` are fetched before each task; see [Cloud setup](docs/cloud-setup.md).
 
 ## Trust boundaries
 
@@ -59,10 +60,10 @@ Client workflow callers reference `atkandi111/dev-platform@main`, so reviewed pl
 For a new repository:
 
 ```bash
-./client-setup install /path/to/repository atkandi111/dev-platform
+./client-setup install /path/to/repository atkandi111/.github
 ./client-setup check /path/to/repository
 ```
 
-The installer refuses to overwrite existing files. Existing repositories should merge the templates deliberately. Configure the Codex Cloud environment separately using [docs/cloud-setup.md](docs/cloud-setup.md), then run the canary described there before relying on the owner-comment trigger in that environment.
+The installer refuses to overwrite existing files. A local Issue or pull-request template overrides the account default and must be removed unless the repository deliberately owns that divergence. Configure the Codex Cloud environment separately using [docs/cloud-setup.md](docs/cloud-setup.md), then run the canary described there before relying on the owner-comment trigger in that environment.
 
 For merge order, existing work, existing Issues, cleanup, and rollback, follow [docs/transition.md](docs/transition.md).

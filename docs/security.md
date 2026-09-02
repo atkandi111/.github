@@ -8,6 +8,7 @@ Codex Cloud's GitHub installation, user authorization, repository selection, and
 
 ## Credential separation
 
+- The account `.github` repository is intentionally public. Public repository content and pull requests never receive the Portfolio credential; only the reviewed scheduled/manual reconciliation job on `main` reads `PORTFOLIO_PROJECT_TOKEN`.
 - The Codex task receives access only to its repository. It receives no Actions publishing token, portfolio-wide token, production credential, or persistent/shared infrastructure authority.
 - Pull-request CI uses `contents: read` and no deployment secrets.
 - Native Codex Code Review reads the published PR and applicable repository guidance as a quality gate. It does not receive or grant merge, deployment, Terraform plan/apply, or persistent-mutation authority.
@@ -21,7 +22,7 @@ The reusable CI workflow rejects changes to `.github/workflows/**` and `.github/
 
 An intentional verifier change is a platform or manually supervised maintenance change, not an ordinary implementation Issue. Merge it through a controlled transition before requiring the updated check; do not add a label-based bypass to untrusted pull-request code.
 
-The current private repositories do not have enforceable branch protection or rulesets under the present GitHub plan. CI and protected-path failures therefore provide visible, deterministic evidence but cannot technically prevent an authorized maintainer from merging. Treat a failed required check as a do-not-merge signal; human review remains the enforcement point until repository settings can make the checks mandatory.
+The public account `.github` repository protects `main` and requires its platform checks. Private client repositories that cannot enforce branch protection under the current GitHub plan must treat a failed check as a do-not-merge signal; human review remains their enforcement point.
 
 ## Fail-closed behavior
 

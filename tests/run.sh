@@ -14,10 +14,7 @@ ruby -e 'require "yaml"; ARGV.each { |file| YAML.parse_file(file); puts "yaml ok
   templates/client/.github/workflows/governance.yml \
   .github/ISSUE_TEMPLATE/01-implementation.yml \
   .github/ISSUE_TEMPLATE/02-planning.yml \
-  .github/ISSUE_TEMPLATE/config.yml \
-  templates/client/.github/ISSUE_TEMPLATE/01-implementation.yml \
-  templates/client/.github/ISSUE_TEMPLATE/02-planning.yml \
-  templates/client/.github/ISSUE_TEMPLATE/config.yml
+  .github/ISSUE_TEMPLATE/config.yml
 
 python3 tests/test_pipeline.py
 git diff --check

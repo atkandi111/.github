@@ -7,12 +7,15 @@ template_root="$platform_root/templates/client"
 client_files=(
   AGENTS.md
   PROJECT.md
-  .github/ISSUE_TEMPLATE/01-implementation.yml
-  .github/ISSUE_TEMPLATE/02-planning.yml
-  .github/ISSUE_TEMPLATE/config.yml
-  .github/pull_request_template.md
   .github/workflows/ci.yml
   .github/workflows/governance.yml
+)
+
+account_default_overrides=(
+  .github/ISSUE_TEMPLATE
+  .github/pull_request_template.md
+  PULL_REQUEST_TEMPLATE.md
+  docs/pull_request_template.md
 )
 
 usage() {
@@ -33,7 +36,7 @@ require_portfolio_registration() {
   }
   grep -Fqx "$repository" "$inventory" || {
     echo "client repository is not registered for Portfolio reconciliation: $repository" >&2
-    echo 'Add it to config/portfolio-repositories.txt through a reviewed dev-platform change first.' >&2
+    echo 'Add it to config/portfolio-repositories.txt through a reviewed account .github change first.' >&2
     return 1
   }
 }
@@ -100,7 +103,7 @@ install_client() {
 
   for relative in "${client_files[@]}"; do
     mkdir -p "$(dirname "$target/$relative")"
-    sed -e "s|YOUR_ORG/dev-platform|$repository|g" -e "s|@main|@$version|g" \
+    sed -e "s|YOUR_OWNER/.github|$repository|g" -e "s|@main|@$version|g" \
       "$template_root/$relative" > "$target/$relative"
   done
 
@@ -130,24 +133,22 @@ check_client() {
     failed=true
   fi
   for relative in "${client_files[@]}"; do
-    if grep -En 'YOUR_ORG/dev-platform|OPENAI_API_KEY|AGENT_PIPELINE_ENABLED|PIPELINE_ENABLED' "$target/$relative"; then
+    if grep -En 'YOUR_OWNER/\.github|YOUR_ORG/dev-platform|OPENAI_API_KEY|AGENT_PIPELINE_ENABLED|PIPELINE_ENABLED' "$target/$relative"; then
       echo "obsolete or incomplete pipeline configuration found in $relative" >&2
       failed=true
     fi
   done
-  if ! grep -Eq "dev-platform/.github/workflows/(ci|governance)\.yml${expected}" \
+  if ! grep -Eq "/\.github/\.github/workflows/(ci|governance)\.yml${expected}" \
       "$target/.github/workflows/ci.yml" "$target/.github/workflows/governance.yml"; then
     echo "workflow callers do not use the expected release reference: $expected" >&2
     failed=true
   fi
-  grep -Fq '@codex implement this issue' "$target/.github/ISSUE_TEMPLATE/01-implementation.yml" || {
-    echo 'implementation Issue is missing its queue instruction' >&2
-    failed=true
-  }
-  grep -Fq '## Merge Brief' "$target/.github/pull_request_template.md" || {
-    echo 'pull request template is missing the Merge Brief' >&2
-    failed=true
-  }
+  for relative in "${account_default_overrides[@]}"; do
+    if [[ -e "$target/$relative" || -L "$target/$relative" ]]; then
+      echo "local template overrides account defaults: $relative" >&2
+      failed=true
+    fi
+  done
   if grep -Eq 'Replace this guidance|Document the important|document the command' "$target/PROJECT.md" "$target/AGENTS.md"; then
     echo 'repository guidance still contains template placeholders' >&2
     failed=true
@@ -157,6 +158,7 @@ check_client() {
   printf '%s\n' \
     'Repository files are ready.' \
     '- Protect main and require deterministic CI.' \
+    '- Verify the account-level Issue and pull-request templates in GitHub.' \
     '- Keep pull-request CI free of deployment credentials.' \
     '- Configure Codex Cloud using docs/cloud-setup.md.' \
     '- Keep the portfolio Project for visibility, not authorization.'

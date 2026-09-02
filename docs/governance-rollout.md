@@ -30,7 +30,7 @@ The documented execution phases intentionally fit the existing four Project stat
 
 ## Portfolio membership
 
-The Project's native auto-add workflow targets `atkandi111/demandph-website` with `is:issue,pr is:open`. GitHub permits only one native auto-add workflow on the current plan, and each workflow targets one repository, so `dev-platform` provides the narrow fallback for the rest of the portfolio:
+The Project's native auto-add workflow targets `atkandi111/demandph-website` with `is:issue,pr is:open`. GitHub permits only one native auto-add workflow on the current plan, and each workflow targets one repository, so the account `.github` repository provides the narrow fallback for the rest of the portfolio:
 
 - `config/portfolio-repositories.txt` is the reviewed inventory of active repositories.
 - `.github/workflows/portfolio-project.yml` audits every listed repository and reconciles missing open Issues, pull requests, and lifecycle Status values every 15 minutes.
@@ -50,9 +50,9 @@ The Actions workflow requires the repository secret `PORTFOLIO_PROJECT_TOKEN`. U
 
 ## Future repository onboarding
 
-1. Add `OWNER/REPOSITORY` to `config/portfolio-repositories.txt` in alphabetical order through a reviewed `dev-platform` pull request.
+1. Add `OWNER/REPOSITORY` to `config/portfolio-repositories.txt` in alphabetical order through a reviewed account `.github` pull request.
 2. If the GitHub plan has an unused native auto-add slot, add a repository-specific rule with `is:issue,pr is:open`; otherwise the scheduled reconciler is the auto-add coverage.
-3. Run `./client-setup onboard TARGET PLATFORM_OWNER/REPOSITORY CLIENT_OWNER/REPOSITORY`. It refuses unregistered clients.
+3. Run `./client-setup onboard TARGET atkandi111/.github CLIENT_OWNER/REPOSITORY`. It refuses unregistered clients and local templates that would silently shadow the account defaults.
 4. Run the **Portfolio Project reconciliation** workflow in `audit` mode and confirm there are no missing open items.
 5. Open one disposable Planning / deferred Issue in the new repository, run or await reconciliation, and confirm one Project item appears with `Status: Todo` and no Priority. Close it as completed and reopen it once to verify `Done` then `Todo`, confirm no duplicate appears, and close it afterward.
 
