@@ -1,59 +1,52 @@
-# Governance rollout
+# Governance and Portfolio lifecycle
 
-The portfolio GitHub Project remains the canonical view of status and priority. Repository workflows do not use Project fields as task authorization.
+The Portfolio Project is the canonical view of priority and status. It is never an execution or merge control surface.
 
-The reusable governance workflow validates only deterministic naming rules and is disabled by default through `GOVERNANCE_NAMING_ENFORCED`. Observe it before enabling. Cloud-generated branch names are accepted as automation and should not drive new parsing or classification logic.
-
-Do not add semantic Issue classification, a custom AI-review Action, automated priority assignment, convergence loops, or auto-merge. Human-authored Issue contracts, Merge Briefs, and one native P0/P1 review are the simpler control surface for a solo developer.
-
-## Review and handoff
-
-Keep the pull request draft through implementation and agent review:
-
-1. The coordinator publishes or updates the actual Cloud branch, verifies its full GitHub SHA, and completes the Merge Brief.
-2. Deterministic CI passes on that published SHA.
-3. In a separate native GitHub review context, the coordinator posts `@codex review` while the PR is draft when supported.
-4. Only consequential P0/P1 findings block handoff: security/authentication failures, data loss or broken persistence, integration-contract mismatches, unsafe infrastructure or permissions, secret exposure, broken rollback/deployment assumptions, serious user-visible regressions, or absent tests for serious behavior.
-5. If such a finding exists, send it back to the implementation task, update the same branch, rerun affected CI, and request one fresh review. Stop for owner judgment if the finding remains or the agents disagree.
-6. With green CI and no unresolved P0/P1 finding, mark the PR ready and hand it to the owner. Native review never merges, deploys, plans, applies, or approves persistent changes.
-
-Do not spend the review pass on style, naming, minor maintainability, speculative P2/P3 improvements, or settled product decisions. Do not build an unbounded correction loop.
-
-The documented execution phases intentionally fit the existing four Project statuses:
+## Execution lifecycle
 
 | Execution phase | Project Status |
 | --- | --- |
-| Planning / deferred or not delegated | `Todo` |
-| Queued, dispatched/running, implemented but unpublished, draft PR, agent review, blocked, or revisions | `In Progress` |
-| Agent review complete and PR handed to the owner | `For Review` |
-| PR merged or Issue accepted and closed completed | `Done` |
+| Planning / deferred, backlog, existing unstarted work, or disabled pipeline | `Todo` |
+| Authorized/queued Issue, implementation, unpublished result, draft PR, failed CI, blocked work, or owner-requested revision | `In Progress` |
+| Published PR is ready for owner review | `For Review` |
+| PR merged or Issue accepted and closed as completed | `Done` |
+
+The intake workflow adds `agent:authorized` as the durable execution receipt and `agent:in-progress` while a run or revision is active. Draft/ready state and changes-requested reviews supply the remaining lifecycle signals. The reconciler is idempotent and edits only Status. It never edits Priority, Waiting On, or unrelated fields.
+
+Dragging a Project card, changing Status, adding a label later, or writing Issue text does not execute Codex, publish a branch, approve, merge, or deploy.
+
+## Review and owner handoff
+
+1. The clean publisher opens a draft PR with the Merge Brief and verified SHA.
+2. Deterministic credential-free CI runs on that SHA.
+3. Green CI makes the initial PR ready and removes `agent:in-progress`.
+4. Native automatic Codex review provides an advisory P0/P1 pass when enabled.
+5. The owner reviews the Merge Brief, diff, CI, and findings.
+6. A changes-requested review sets the work back to In Progress and queues a bounded revision on the same PR.
+7. Owner approval of the current SHA publishes `atkandi/owner-approval`. Native auto-merge may complete only when verified branch protection also requires deterministic CI, stale-review dismissal, and resolved conversations.
+
+Do not parse Codex prose, create an AI approval status, auto-prioritize, or add a convergence loop. A fresh Codex review after a revision is optional because the owner and deterministic checks remain authoritative.
 
 ## Portfolio membership
 
-The Project's native auto-add workflow targets `atkandi111/demandph-website` with `is:issue,pr is:open`. GitHub permits only one native auto-add workflow on the current plan, and each workflow targets one repository, so the account `.github` repository provides the narrow fallback for the rest of the portfolio:
+The Project's one native auto-add rule covers `atkandi111/demandph-website` with `is:issue,pr is:open`. The account `.github` scheduled reconciler covers the rest of the reviewed inventory every 15 minutes:
 
-- `config/portfolio-repositories.txt` is the reviewed inventory of active repositories.
-- `.github/workflows/portfolio-project.yml` audits every listed repository and reconciles missing open Issues, pull requests, and lifecycle Status values every 15 minutes.
-- `scripts/reconcile-portfolio-project audit` reports exact membership and Status drift without changing the Project.
-- `scripts/reconcile-portfolio-project reconcile` adds missing open items and edits only their Status field. It never removes or archives items and never edits Priority, Waiting On, or unrelated fields.
+- `config/portfolio-repositories.txt` lists active repositories.
+- `.github/workflows/portfolio-project.yml` runs audit or reconciliation.
+- `scripts/reconcile-portfolio-project audit` reports membership and Status drift.
+- `scripts/reconcile-portfolio-project reconcile` adds missing open Issues/PRs and repairs only Status.
 
-The four statuses therefore mean:
-
-- `Todo`: planning, deferred, backlogged, or not yet delegated;
-- `In Progress`: the owner posted the exact trigger, or work is queued, running, in a draft pull request, blocked after starting, or undergoing revisions;
-- `For Review`: agent review is complete and the linked pull request is ready for owner review with no outstanding changes request;
-- `Done`: the pull request merged or the Issue closed with the completed reason.
-
-The Project's native workflows provide immediate safe transitions for item-added, reopened, linked-PR, changes-requested, approved, and merged events. The broad native **Item closed** workflow is disabled because it cannot distinguish a completed Issue from a not-planned Issue or an unmerged closed pull request; the reconciler sets `Done` only from the completed reason or a merge. GitHub Projects has no native Issue-comment or ready-for-review trigger, so the central reconciler fills those gaps on its schedule. It accepts only the exact unedited top-level trigger comment authored by the repository owner; Issue-body text and all other comment forms are ignored. Project status is informational and never invokes Codex, merges, or deploys.
-
-The Actions workflow requires the repository secret `PORTFOLIO_PROJECT_TOKEN`. Use a dedicated credential able to read the registered private repositories and read/write the user-owned Project. For a classic personal access token, GitHub requires `repo` for private repository records and `project` for Project queries and mutations. Never pass the token as a command argument or print it.
+The reconciler never removes or archives items. Closed-not-planned Issues and unmerged closed PRs are not forced to Done.
 
 ## Future repository onboarding
 
-1. Add `OWNER/REPOSITORY` to `config/portfolio-repositories.txt` in alphabetical order through a reviewed account `.github` pull request.
-2. If the GitHub plan has an unused native auto-add slot, add a repository-specific rule with `is:issue,pr is:open`; otherwise the scheduled reconciler is the auto-add coverage.
-3. Run `./client-setup onboard TARGET atkandi111/.github CLIENT_OWNER/REPOSITORY`. It refuses unregistered clients and local templates that would silently shadow the account defaults.
-4. Run the **Portfolio Project reconciliation** workflow in `audit` mode and confirm there are no missing open items.
-5. Open one disposable Planning / deferred Issue in the new repository, run or await reconciliation, and confirm one Project item appears with `Status: Todo` and no Priority. Close it as completed and reopen it once to verify `Done` then `Todo`, confirm no duplicate appears, and close it afterward.
+1. Add `OWNER/REPOSITORY` to `config/portfolio-repositories.txt` in alphabetical order through a reviewed account `.github` PR.
+2. Run `./client-setup onboard TARGET atkandi111/.github OWNER/REPOSITORY` and tailor CI commands.
+3. Run `./client-setup labels OWNER/REPOSITORY` before relying on the inherited forms.
+4. Configure the dedicated OpenAI key, publisher App installation/key, and disabled-by-default variables from `docs/cloud-setup.md`.
+5. Merge the thin caller PR manually; verify account-default Issue/PR templates and Portfolio membership.
+6. Enable native Codex automatic review.
+7. Verify branch protection. Enable automatic merge only when the full native gate is enforceable; otherwise retain manual merge.
+8. Set `AGENT_PIPELINE_ENABLED=true` and observe the first real low-risk Implementation Issue end to end.
 
-Treat a missing secret, Project access error, inventory omission, duplicate repository, or audit gap as failed onboarding. Do not compensate by using Project fields as execution authority.
+Treat a missing label, secret, App installation, Project permission, caller, protection rule, or audit gap as failed onboarding. Do not compensate by trusting Issue text or Project state.

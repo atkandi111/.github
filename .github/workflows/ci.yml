@@ -107,10 +107,20 @@ jobs:
           import sys
 
           patterns = [
+              ".github/ISSUE_TEMPLATE",
+              ".github/ISSUE_TEMPLATE/**",
               ".github/workflows",
               ".github/workflows/**",
               ".github/actions",
               ".github/actions/**",
+              "AGENTS.md",
+              "**/AGENTS.md",
+              "client-setup",
+              "scripts/pipeline_policy.py",
+              "scripts/portfolio_status.py",
+              "scripts/reconcile-portfolio-project",
+              "templates/client/.github/workflows",
+              "templates/client/.github/workflows/**",
           ]
           patterns.extend(
               line.strip()

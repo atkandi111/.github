@@ -1,69 +1,77 @@
 # Atkandi developer platform
 
-The public account-level `.github` repository is the reviewed source for the portfolio's shared Codex policy, deterministic pull-request checks, governance conventions, and GitHub-native default templates. Codex Cloud performs implementation and branch publication; this repository does not contain a custom agent runner or publisher.
+This public account-level `.github` repository is the reviewed source for the portfolio's Issue-to-PR pipeline, shared Codex policy, deterministic CI, Project synchronization, and default Issue/PR templates.
+
+## Human summary
+
+The solo-developer workflow has two deliberate human attention points:
+
+1. Write and review an **Implementation Issue** when the work is ready. Publishing that owner-authored Issue queues it automatically.
+2. Review the resulting pull request. Approve the current revision to authorize merge, or request changes to send the same PR through one more implementation pass.
+
+Everything between those points is mechanical: one repository-scoped run, one `issue/<number>` branch, one draft PR, a completed Merge Brief, deterministic CI, and native Codex P0/P1 review. Planning / deferred Issues never run. The Project only mirrors status.
+
+Do not add `@codex implement` to an Issue. That invokes a separate native Cloud task and can duplicate the Actions-hosted implementation.
 
 ## Architecture at a glance
 
 | Part | Responsibility |
 | --- | --- |
-| Portfolio GitHub Project | Shows priority and status across repositories; native rules and the central reconciler keep open items present, but Project membership does not authorize execution. |
-| Repository Implementation Issue | Records reviewed work that the coordinator queues by default. |
-| Top-level `@codex` Issue comment | The owner's exact native trigger; the coordinator posts it immediately after creating ready work. |
-| Codex Cloud | Implements that Issue on one issue-specific branch in its repository. |
-| Coordinator | Publishes or updates the draft PR, verifies its SHA and CI, invokes independent review, and hands it to the owner. |
-| Account `.github` repository | Supplies shared policy, reusable CI, governance, Portfolio reconciliation, and account-default Issue/PR templates. |
-| Application repositories | Hold product code, product context, and repository-specific commands and rules. |
-| Infrastructure repository | Holds infrastructure-as-code that Codex may edit and validate without persistent credentials. |
-| Trusted post-merge workflows | Perform deployments and persistent infrastructure changes after human approval. |
+| Implementation Issue | Reviewed, repository-scoped work contract. The owner's initial `implementation` label authorizes one queued run. |
+| Planning / deferred Issue | Backlog, unresolved planning, or coordination parent; never executable. |
+| Per-repository Actions queue | Runs one implementation at a time per repository and retains up to 100 waiting runs with `queue: max`; different repositories run independently. |
+| Codex implementation job | Edits an isolated checkout with no GitHub write, publisher, deployment, or production credential. |
+| Clean publisher | Validates a provenance-bound patch in a fresh checkout, then uses a short-lived repository-scoped GitHub App token to push and open/update one PR. |
+| Deterministic CI | Verifies the exact published SHA without deployment credentials and rejects protected paths. |
+| Native Codex Code Review | Starts when the initial draft becomes ready and reports advisory P0/P1 findings. |
+| Owner approval | The only merge authorization. A head-bound status prevents an approval for an older revision from satisfying the gate. |
+| Native auto-merge | Used only when GitHub can enforce approval, current green checks, stale-review dismissal, and resolved conversations; otherwise merge remains manual. |
+| Portfolio Project | Mirrors Todo, In Progress, For Review, and Done for visibility only. |
+| Trusted post-merge workflows | Own deployment and persistent/shared infrastructure effects with separate credentials and approval. |
 
-## Lean operating model
+## Normal flow
 
-1. Draft and review the work. Use **Implementation issue** for ready work and **Planning / deferred issue** as the explicit non-executable opt-out.
-2. When the coordinator creates an Implementation Issue, it immediately posts the owner's exact supported top-level Codex comment. Publication alone is not a native trigger.
-3. Codex runs one repository-scoped task on one issue-specific branch. Independent or non-overlapping Issues may run in parallel; serialize dependent or overlapping work through merged, green `main`.
-4. When Cloud finishes, the coordinator uses native **Create PR/Update PR**, confirms the PR is draft, completes its Merge Brief, and verifies the published head SHA.
-5. Deterministic CI runs without deployment credentials. The coordinator then requests one separate native `@codex review` limited to consequential P0/P1 findings.
-6. Address consequential findings on the same branch, rerun affected CI, and perform at most one fresh review. Unresolved findings go to the owner.
-7. Mark the PR ready and hand it to the owner only after publication, CI, and agent review. The owner explicitly reviews and merges.
-8. Separate trusted post-merge workflows perform deployments or persistent infrastructure changes with their own authorization.
-
-The owner's exact top-level `@codex implement this issue...` comment remains the queue action. The coordinator posts it by default for Implementation Issues without seeking a second approval; if it cannot act as the repository owner, that one comment remains the owner's manual step and the Issue stays `Todo`. An Issue-body mention is unsupported. Native Codex review is a bounded quality pass, not a custom AI-review Action, merge approval, or deployment authority. There is no custom dispatcher, publisher, convergence controller, or auto-merge system.
-
-The D'EMAND canary proved the exact top-level owner-comment path; see [Cloud setup](docs/cloud-setup.md). Run the disposable canary when onboarding another repository or Codex Cloud environment; Issue-body mentions remain unsupported.
-
-Use [Issue planning](docs/issue-planning.md) for unit sizing, concurrency, dependencies, and cross-repository integration contracts. See [Governance rollout](docs/governance-rollout.md) for the bounded review and Project lifecycle.
+1. The repository owner creates an Issue through the inherited **Implementation issue** form. The original `opened` event must contain `implementation` and must not contain `planning`.
+2. The intake workflow records `agent:authorized` and `agent:in-progress`. Later text, comments, label changes, and Project fields cannot authorize a run.
+3. GitHub serializes work per repository. The implementation job reads the Issue as untrusted data and produces a patch artifact plus provenance.
+4. A separate clean job revalidates the Issue, receipt, exact start SHA, patch hash, and protected paths. Only then does it mint a one-hour GitHub App installation token scoped to that repository.
+5. The publisher creates or updates `issue/<number>` and exactly one draft PR, verifies GitHub's head SHA, and completes the Merge Brief.
+6. Credential-free deterministic CI runs on that SHA. A failure leaves the work In Progress on the same PR.
+7. Green CI removes the in-progress marker and makes the initial PR ready, which starts automatic native Codex review when enabled in Codex settings.
+8. The owner reviews the Merge Brief, diff, CI, and Codex findings. A changes-requested review queues a bounded revision on the same branch and PR. A fresh Codex review on revisions is optional because AI review is advisory.
+9. Owner approval creates the head-bound `atkandi/owner-approval` status. Native auto-merge may complete only where repository protections enforce the full gate; private repositories without that GitHub capability retain manual merge.
 
 ## Centralized pieces
 
-- `policy/AGENTS.md`: portfolio-wide Codex defaults.
-- `.github/workflows/ci.yml`: reusable credential-free CI and protected-path enforcement.
-- `.github/workflows/governance.yml`: optional deterministic naming checks.
-- `.github/workflows/portfolio-project.yml`: centralized open-item and lifecycle Status reconciliation.
-- `.github/ISSUE_TEMPLATE/` and `.github/pull_request_template.md`: account defaults inherited by repositories that do not define local overrides.
-- `templates/client/`: thin repository callers and local guidance skeletons.
-- `client-setup`: conservative installer and readiness checker for new repositories.
+- `policy/AGENTS.md`: portfolio-wide implementation and review rules.
+- `.github/workflows/agent.yml`: reusable authorization, implementation, publication, and handoff pipeline.
+- `.github/workflows/owner-approval.yml`: reusable head-bound owner-review status.
+- `.github/workflows/ci.yml`: reusable credential-free CI and protected-path gate.
+- `.github/workflows/portfolio-project.yml`: scheduled membership and lifecycle reconciliation.
+- `.github/ISSUE_TEMPLATE/` and `.github/pull_request_template.md`: account defaults for repositories without local overrides.
+- `templates/client/`: thin callers and repository guidance skeletons.
+- `client-setup`: conservative installer, release-pin checker, and label setup command.
 
-Client workflow callers reference `atkandi111/.github@main`, so reviewed platform workflow updates propagate automatically. GitHub supplies the account-default Issue forms and Merge Brief to current and future repositories that do not define local templates. Repository-local `AGENTS.md` files remain necessary for native GitHub review and repository-specific commands. In Codex Cloud, install the public shared policy as global guidance so changes on `main` are fetched before each task; see [Cloud setup](docs/cloud-setup.md).
+Client callers follow `atkandi111/.github@main`, so reviewed central workflow updates propagate without copying their implementation. The thin local callers remain necessary because GitHub does not inherit Actions workflows from the account `.github` repository.
 
 ## Trust boundaries
 
-- Codex Cloud authentication and repository access replace the former Actions-hosted OpenAI key and custom publisher token path.
-- A task is repository-scoped. It cannot discover or escalate authority into another repository.
-- Pull-request verification receives `contents: read` and no cloud/deployment credentials.
-- Workflow and local action paths are protected by default because pull-request code must not redefine its own verifier.
-- Application repositories do not receive infrastructure provisioning authority.
-- The infrastructure repository may validate Terraform in pull-request CI, but persistent plan/apply remains a separate trusted workflow on `main` with explicit human approval.
-- The GitHub Project remains the portfolio view; Project status is not an execution signal.
+- The kill switch is `AGENT_PIPELINE_ENABLED`; it defaults to false. Manual recovery is owner-only and requires the trusted authorization receipt from an earlier valid `opened` event.
+- `OPENAI_API_KEY` belongs to a dedicated non-production OpenAI project for that repository. The official Codex Action keeps it behind its proxy; the Codex job receives no GitHub write credential.
+- `PUBLISHER_APP_PRIVATE_KEY` is used only by clean publisher/finalizer jobs. Tokens are short-lived and downscoped to one repository and the exact contents/issues/pull-request permissions required.
+- Workflow/action paths and all `AGENTS.md` files are publisher-protected. Application callers should additionally protect infrastructure paths; the infrastructure repository may allow credential-free IaC edits and validation.
+- Pull-request jobs receive no deployment or persistent infrastructure secrets. Production/shared effects remain post-merge and separately approved.
+- Native Codex review may inform the owner but cannot merge, deploy, or change Project authority.
 
 ## Adoption
 
-For a new repository:
+Install the thin callers in a new registered repository:
 
 ```bash
-./client-setup install /path/to/repository atkandi111/.github
+./client-setup onboard /path/to/repository atkandi111/.github OWNER/REPOSITORY
 ./client-setup check /path/to/repository
 ```
 
-The installer refuses to overwrite existing files. A local Issue or pull-request template overrides the account default and must be removed unless the repository deliberately owns that divergence. Configure the Codex Cloud environment separately using [docs/cloud-setup.md](docs/cloud-setup.md), then run the canary described there before relying on the owner-comment trigger in that environment.
+Then create the four required labels, configure the dedicated OpenAI key and publisher App, leave both pipeline variables disabled, merge the reviewed caller PR, verify repository protections, and enable the pipeline. Follow [Cloud and publisher setup](docs/cloud-setup.md) and [Release and rollback](docs/release.md).
 
-For merge order, existing work, existing Issues, cleanup, and rollback, follow [docs/transition.md](docs/transition.md).
+For Issue sizing and cross-repository parents, read [Issue planning](docs/issue-planning.md). For the Project lifecycle, read [Governance rollout](docs/governance-rollout.md). For credentials and protected paths, read [Security](docs/security.md).

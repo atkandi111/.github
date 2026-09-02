@@ -1,0 +1,776 @@
+name: Reusable Issue-to-PR pipeline
+
+on:
+  workflow_call:
+    inputs:
+      event_kind:
+        description: issue_opened, revision_requested, or manual.
+        required: true
+        type: string
+      requested_issue_number:
+        description: Owner-selected Issue for manual recovery; zero for event-driven runs.
+        required: false
+        default: 0
+        type: number
+      base_ref:
+        required: false
+        default: main
+        type: string
+      platform_ref:
+        description: Reviewed .github release containing the matching policy helpers.
+        required: false
+        default: main
+        type: string
+      pipeline_enabled:
+        required: false
+        default: "false"
+        type: string
+      auto_merge_enabled:
+        required: false
+        default: "false"
+        type: string
+      publisher_client_id:
+        required: false
+        default: ""
+        type: string
+      protected_paths:
+        description: Newline-separated repository paths that implementation must not publish.
+        required: false
+        default: ""
+        type: string
+      node_version:
+        required: false
+        default: ""
+        type: string
+      terraform_version:
+        required: false
+        default: ""
+        type: string
+      setup_command:
+        required: false
+        default: ""
+        type: string
+      lint_command:
+        required: false
+        default: ""
+        type: string
+      test_command:
+        required: false
+        default: ""
+        type: string
+      build_command:
+        required: false
+        default: ""
+        type: string
+      typecheck_command:
+        required: false
+        default: ""
+        type: string
+      extra_command:
+        required: false
+        default: ""
+        type: string
+      agent_model:
+        required: false
+        default: gpt-5.6-sol
+        type: string
+      agent_effort:
+        required: false
+        default: xhigh
+        type: string
+      max_attempts:
+        required: false
+        default: 2
+        type: number
+      timeout_minutes:
+        required: false
+        default: 45
+        type: number
+    secrets:
+      openai_api_key:
+        required: true
+      publisher_private_key:
+        required: true
+
+# One implementation runs per repository. GitHub retains up to 100 waiting runs.
+concurrency:
+  group: atkandi-issue-pipeline-${{ github.repository }}
+  cancel-in-progress: false
+  queue: max
+
+jobs:
+  authorize:
+    name: Validate immutable authorization
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      issues: write
+      pull-requests: write
+    outputs:
+      action: ${{ steps.authorize.outputs.action }}
+      issue_number: ${{ steps.authorize.outputs.issue_number }}
+      pr_number: ${{ steps.authorize.outputs.pr_number }}
+      mode: ${{ steps.authorize.outputs.mode }}
+      branch: ${{ steps.authorize.outputs.branch }}
+      start_sha: ${{ steps.authorize.outputs.start_sha }}
+    steps:
+      - name: Check out reviewed platform policy
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          repository: atkandi111/.github
+          ref: ${{ inputs.platform_ref }}
+          path: .atkandi-platform
+          persist-credentials: false
+
+      - name: Validate event and claim work
+        id: authorize
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          EVENT_KIND: ${{ inputs.event_kind }}
+          REQUESTED_ISSUE: ${{ inputs.requested_issue_number }}
+          BASE_REF: ${{ inputs.base_ref }}
+          PIPELINE_ENABLED: ${{ inputs.pipeline_enabled }}
+          MAX_ATTEMPTS: ${{ inputs.max_attempts }}
+          POLICY: ${{ github.workspace }}/.atkandi-platform/scripts/pipeline_policy.py
+        run: |
+          set -euo pipefail
+          echo 'action=none' >> "$GITHUB_OUTPUT"
+          [[ "$PIPELINE_ENABLED" == true || "$PIPELINE_ENABLED" == false ]] || {
+            echo '::error::pipeline_enabled must be true or false'
+            exit 1
+          }
+          if [[ "$PIPELINE_ENABLED" != true ]]; then
+            echo 'Pipeline is disabled; no Issue was claimed.' >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          [[ "$MAX_ATTEMPTS" =~ ^[1-9][0-9]*$ ]] || { echo '::error::max_attempts is invalid'; exit 1; }
+          if (( GITHUB_RUN_ATTEMPT > MAX_ATTEMPTS )); then
+            echo "::error::Run attempt $GITHUB_RUN_ATTEMPT exceeds the configured limit $MAX_ATTEMPTS"
+            exit 1
+          fi
+          git check-ref-format "refs/heads/$BASE_REF" >/dev/null
+
+          decision=$(
+            python3 "$POLICY" authorize \
+              --event-kind "$EVENT_KIND" \
+              --owner "$GITHUB_REPOSITORY_OWNER" \
+              --default-branch "$BASE_REF" \
+              --issue-number "$REQUESTED_ISSUE" \
+              --event "$GITHUB_EVENT_PATH"
+          )
+          if [[ $(jq -r '.authorized' <<< "$decision") != true ]]; then
+            echo 'Event was not an authorized pipeline action.' >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+
+          issue_number=$(jq -r '.issue_number' <<< "$decision")
+          pr_number=$(jq -r '.pr_number' <<< "$decision")
+          mode=$(jq -r '.mode' <<< "$decision")
+          branch=$(jq -r '.branch' <<< "$decision")
+          [[ "$issue_number" =~ ^[1-9][0-9]*$ && "$pr_number" =~ ^[0-9]+$ ]]
+          [[ "$branch" == "issue/$issue_number" ]]
+
+          labels_file="$RUNNER_TEMP/labels.json"
+          gh api --paginate --slurp "repos/$GITHUB_REPOSITORY/labels?per_page=100" > "$labels_file"
+          for required_label in implementation planning agent:authorized agent:in-progress; do
+            jq -e --arg name "$required_label" 'any(.[][]; .name == $name)' "$labels_file" >/dev/null || {
+              echo "::error::Required onboarding label is missing: $required_label"
+              exit 1
+            }
+          done
+
+          issue_file="$RUNNER_TEMP/issue.json"
+          gh api "repos/$GITHUB_REPOSITORY/issues/$issue_number" > "$issue_file"
+          jq -e --arg owner "$GITHUB_REPOSITORY_OWNER" \
+            '.state == "open" and .user.login == $owner and (.pull_request | not)' "$issue_file" >/dev/null || {
+              echo '::error::Authorized Issue is no longer an open owner-authored Issue'
+              exit 1
+            }
+
+          receipt_file="$RUNNER_TEMP/receipt-events.json"
+          if [[ "$mode" != new ]]; then
+            gh api --paginate --slurp "repos/$GITHUB_REPOSITORY/issues/$issue_number/events?per_page=100" > "$receipt_file"
+            python3 "$POLICY" receipt --events "$receipt_file"
+          fi
+
+          prs_file="$RUNNER_TEMP/related-prs.json"
+          gh api --method GET "repos/$GITHUB_REPOSITORY/pulls" \
+            -f state=all -f head="$GITHUB_REPOSITORY_OWNER:$branch" -f base="$BASE_REF" -f per_page=100 > "$prs_file"
+          open_count=$(jq '[.[] | select(.state == "open")] | length' "$prs_file")
+          historical_count=$(jq 'length' "$prs_file")
+
+          if [[ "$mode" == new ]]; then
+            if (( historical_count > 0 )); then
+              echo 'This Issue already has a pipeline pull request; duplicate delivery was ignored.' >> "$GITHUB_STEP_SUMMARY"
+              exit 0
+            fi
+            if gh api "repos/$GITHUB_REPOSITORY/git/ref/heads/$branch" >/dev/null 2>&1; then
+              echo '::error::Issue branch exists without its pipeline pull request; manual cleanup is required'
+              exit 1
+            fi
+            start_sha=$(gh api "repos/$GITHUB_REPOSITORY/branches/$BASE_REF" --jq '.commit.sha')
+            jq -n '{labels:["agent:authorized","agent:in-progress"]}' |
+              gh api --method POST "repos/$GITHUB_REPOSITORY/issues/$issue_number/labels" --input - >/dev/null
+          elif [[ "$mode" == revision ]]; then
+            (( open_count == 1 )) || { echo '::error::Revision requires exactly one open Issue pull request'; exit 1; }
+            actual_pr=$(jq -r '.[0].number' "$prs_file")
+            [[ "$actual_pr" == "$pr_number" ]] || { echo '::error::Review pull request does not match the Issue branch'; exit 1; }
+            current_pr=$(gh api "repos/$GITHUB_REPOSITORY/pulls/$pr_number")
+            review_sha=$(jq -r '.review.commit_id' "$GITHUB_EVENT_PATH")
+            jq -e --arg branch "$branch" --arg base "$BASE_REF" --arg repo "$GITHUB_REPOSITORY" --arg review_sha "$review_sha" \
+              '.state == "open" and .head.ref == $branch and .head.sha == $review_sha and .head.repo.full_name == $repo and .base.ref == $base' \
+              <<< "$current_pr" >/dev/null
+            start_sha=$(jq -r '.head.sha' <<< "$current_pr")
+            jq -n '{labels:["agent:in-progress"]}' |
+              gh api --method POST "repos/$GITHUB_REPOSITORY/issues/$issue_number/labels" --input - >/dev/null
+            jq -n '{labels:["agent:in-progress"]}' |
+              gh api --method POST "repos/$GITHUB_REPOSITORY/issues/$pr_number/labels" --input - >/dev/null
+          else
+            if (( historical_count > 1 || open_count > 1 )); then
+              echo '::error::Recovery found multiple Issue pull requests'
+              exit 1
+            fi
+            if (( open_count == 1 )); then
+              pr_number=$(jq -r '.[0].number' "$prs_file")
+              mode=recovery
+              start_sha=$(jq -r '.[0].head.sha' "$prs_file")
+              jq -n '{labels:["agent:in-progress"]}' |
+                gh api --method POST "repos/$GITHUB_REPOSITORY/issues/$pr_number/labels" --input - >/dev/null
+            elif (( historical_count > 0 )); then
+              echo 'An existing closed or merged pipeline PR prevents a second PR.' >> "$GITHUB_STEP_SUMMARY"
+              exit 0
+            elif gh api "repos/$GITHUB_REPOSITORY/git/ref/heads/$branch" >/dev/null 2>&1; then
+              echo '::error::Issue branch exists without an open pipeline PR; manual cleanup is required'
+              exit 1
+            else
+              mode=retry_new
+              start_sha=$(gh api "repos/$GITHUB_REPOSITORY/branches/$BASE_REF" --jq '.commit.sha')
+            fi
+            jq -n '{labels:["agent:in-progress"]}' |
+              gh api --method POST "repos/$GITHUB_REPOSITORY/issues/$issue_number/labels" --input - >/dev/null
+          fi
+
+          [[ "$start_sha" =~ ^[0-9a-f]{40}$ ]]
+          {
+            echo 'action=process'
+            echo "issue_number=$issue_number"
+            echo "pr_number=$pr_number"
+            echo "mode=$mode"
+            echo "branch=$branch"
+            echo "start_sha=$start_sha"
+          } >> "$GITHUB_OUTPUT"
+
+  implement:
+    name: Isolated Codex implementation
+    needs: authorize
+    if: needs.authorize.outputs.action == 'process'
+    runs-on: ubuntu-latest
+    timeout-minutes: ${{ inputs.timeout_minutes }}
+    permissions:
+      contents: read
+      issues: read
+    steps:
+      - name: Check out reviewed platform policy
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          repository: atkandi111/.github
+          ref: ${{ inputs.platform_ref }}
+          path: .atkandi-platform
+          persist-credentials: false
+
+      - name: Check out exact implementation start without credentials
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          ref: ${{ needs.authorize.outputs.start_sha }}
+          fetch-depth: 0
+          path: client
+          persist-credentials: false
+
+      - name: Prepare the untrusted Issue as data
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ISSUE_NUMBER: ${{ needs.authorize.outputs.issue_number }}
+          MODE: ${{ needs.authorize.outputs.mode }}
+          POLICY: ${{ github.workspace }}/.atkandi-platform/scripts/pipeline_policy.py
+        run: |
+          set -euo pipefail
+          gh api "repos/$GITHUB_REPOSITORY/issues/$ISSUE_NUMBER" > "$RUNNER_TEMP/issue.json"
+          python3 "$POLICY" prompt \
+            --issue "$RUNNER_TEMP/issue.json" \
+            --event "$GITHUB_EVENT_PATH" \
+            --mode "$MODE" \
+            --output "$GITHUB_WORKSPACE/client/.codex-prompt.md"
+
+      - name: Implement without GitHub write credentials
+        uses: openai/codex-action@52fe01ec70a42f454c9d2ebd47598f9fd6893d56 # v1.11
+        with:
+          openai-api-key: ${{ secrets.openai_api_key }}
+          permission-profile: ":workspace"
+          safety-strategy: drop-sudo
+          codex-version: "0.147.0"
+          codex-args: '["--ephemeral"]'
+          model: ${{ inputs.agent_model }}
+          effort: ${{ inputs.agent_effort }}
+          working-directory: ${{ github.workspace }}/client
+          prompt-file: ${{ github.workspace }}/client/.codex-prompt.md
+          output-file: ${{ github.workspace }}/client/.codex-result.json
+          output-schema: |
+            {"type":"object","additionalProperties":false,"required":["status","summary","question","scope","acceptance_evidence","documentation","validation","review_focus","risk","rollback","followups"],"properties":{"status":{"type":"string","enum":["implemented","blocked","needs_input"]},"summary":{"type":"string","maxLength":600},"question":{"type":["string","null"],"maxLength":240},"scope":{"type":"array","maxItems":12,"items":{"type":"string","maxLength":300}},"acceptance_evidence":{"type":"array","maxItems":16,"items":{"type":"string","maxLength":400}},"documentation":{"type":"string","maxLength":400},"validation":{"type":"array","maxItems":12,"items":{"type":"string","maxLength":300}},"review_focus":{"type":"string","maxLength":400},"risk":{"type":"string","maxLength":400},"rollback":{"type":"string","maxLength":400},"followups":{"type":"array","maxItems":12,"items":{"type":"string","maxLength":300}}}}
+
+      - name: Capture the implementation as inert data
+        shell: bash
+        env:
+          ISSUE_NUMBER: ${{ needs.authorize.outputs.issue_number }}
+          MODE: ${{ needs.authorize.outputs.mode }}
+          START_SHA: ${{ needs.authorize.outputs.start_sha }}
+          RESULT_DIR: ${{ runner.temp }}/implementation-result
+        run: |
+          set -euo pipefail
+          mkdir -p "$RESULT_DIR"
+          test -s client/.codex-result.json
+          mv client/.codex-result.json "$RESULT_DIR/result.json"
+          rm -f client/.codex-prompt.md
+          git -C client add -N -- .
+          git -C client diff --binary --full-index --no-ext-diff --no-textconv HEAD > "$RESULT_DIR/changes.patch"
+          python3 - "$RESULT_DIR" <<'PY'
+          import hashlib
+          import json
+          import os
+          import pathlib
+          import sys
+
+          root = pathlib.Path(sys.argv[1])
+          patch = (root / "changes.patch").read_bytes()
+          value = {
+              "repository": os.environ["GITHUB_REPOSITORY"],
+              "issue_number": int(os.environ["ISSUE_NUMBER"]),
+              "mode": os.environ["MODE"],
+              "start_sha": os.environ["START_SHA"],
+              "run_id": int(os.environ["GITHUB_RUN_ID"]),
+              "run_attempt": int(os.environ["GITHUB_RUN_ATTEMPT"]),
+              "patch_sha256": hashlib.sha256(patch).hexdigest(),
+          }
+          (root / "provenance.json").write_text(json.dumps(value, sort_keys=True), encoding="utf-8")
+          PY
+
+      - name: Upload isolated implementation result
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: implementation-result-${{ github.run_id }}
+          path: ${{ runner.temp }}/implementation-result
+          if-no-files-found: error
+          retention-days: 2
+
+  publish:
+    name: Clean deterministic publisher
+    needs: [authorize, implement]
+    if: needs.implement.result == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      actions: read
+      contents: read
+      issues: write
+      pull-requests: read
+    outputs:
+      published: ${{ steps.publish.outputs.published }}
+      pr_number: ${{ steps.publish.outputs.pr_number }}
+      head_sha: ${{ steps.publish.outputs.head_sha }}
+    steps:
+      - name: Check out reviewed platform policy
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          repository: atkandi111/.github
+          ref: ${{ inputs.platform_ref }}
+          path: .atkandi-platform
+          persist-credentials: false
+
+      - name: Download implementation result
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: implementation-result-${{ github.run_id }}
+          path: ${{ runner.temp }}/implementation-result
+
+      - name: Check out clean validation state
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          ref: ${{ needs.authorize.outputs.start_sha }}
+          fetch-depth: 0
+          path: validation
+          persist-credentials: false
+
+      - name: Validate result, provenance, scope, and live state
+        id: validate
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ISSUE_NUMBER: ${{ needs.authorize.outputs.issue_number }}
+          PR_NUMBER: ${{ needs.authorize.outputs.pr_number }}
+          MODE: ${{ needs.authorize.outputs.mode }}
+          BRANCH: ${{ needs.authorize.outputs.branch }}
+          START_SHA: ${{ needs.authorize.outputs.start_sha }}
+          BASE_REF: ${{ inputs.base_ref }}
+          PROTECTED_PATHS: ${{ inputs.protected_paths }}
+          PUBLISHER_CLIENT_ID: ${{ inputs.publisher_client_id }}
+          POLICY: ${{ github.workspace }}/.atkandi-platform/scripts/pipeline_policy.py
+          RESULT_DIR: ${{ runner.temp }}/implementation-result
+        run: |
+          set -euo pipefail
+          echo 'publishable=false' >> "$GITHUB_OUTPUT"
+          result="$RESULT_DIR/result.json"
+          patch="$RESULT_DIR/changes.patch"
+          provenance="$RESULT_DIR/provenance.json"
+          test -f "$result" && test -f "$patch" && test -f "$provenance"
+          python3 "$POLICY" validate-result --result "$result"
+          python3 "$POLICY" validate-provenance \
+            --provenance "$provenance" --patch "$patch" \
+            --repository "$GITHUB_REPOSITORY" --issue-number "$ISSUE_NUMBER" \
+            --mode "$MODE" --start-sha "$START_SHA" \
+            --run-id "$GITHUB_RUN_ID" --run-attempt "$GITHUB_RUN_ATTEMPT"
+
+          status=$(jq -r '.status' "$result")
+          if [[ "$status" != implemented ]]; then
+            jq -r '
+              def clean:
+                gsub("[\\r\\n]+"; " ")
+                | gsub("&"; "&amp;")
+                | gsub("<"; "&lt;")
+                | gsub(">"; "&gt;")
+                | gsub("@"; "&#64;")
+                | gsub("#"; "&#35;");
+              if .status == "needs_input" then
+                "HUMAN INPUT REQUIRED\\n\\nQuestion: " + ((.question // "Clarify the missing implementation decision.") | clean) +
+                "\\nContext: " + (.summary | clean)
+              else
+                "AUTOMATION STOPPED\\n\\n" + (.summary | clean)
+              end
+            ' "$result" > "$RUNNER_TEMP/implementation-handoff.md"
+            jq -n '{labels:["agent:in-progress"]}' |
+              gh api --method POST "repos/$GITHUB_REPOSITORY/issues/$ISSUE_NUMBER/labels" --input - >/dev/null
+            gh issue comment "$ISSUE_NUMBER" --repo "$GITHUB_REPOSITORY" \
+              --body-file "$RUNNER_TEMP/implementation-handoff.md"
+            exit 0
+          fi
+          [[ -n "${PUBLISHER_CLIENT_ID//[[:space:]]/}" ]] || {
+            echo '::error::PUBLISHER_APP_CLIENT_ID is not configured'
+            exit 1
+          }
+          if [[ ! -s "$patch" ]]; then
+            if [[ "$MODE" != recovery || "$PR_NUMBER" == 0 ]]; then
+              echo '::error::Implementation produced no repository change'
+              exit 1
+            fi
+          fi
+          if [[ -s "$patch" ]]; then
+            git -C validation apply --check "$patch"
+            git -C validation apply --index "$patch"
+          fi
+          changed="$RUNNER_TEMP/changed-files"
+          git -C validation diff --cached --no-renames --name-only -z "$START_SHA" > "$changed"
+          python3 "$POLICY" protected --paths "$changed" --extra "$PROTECTED_PATHS"
+
+          gh api "repos/$GITHUB_REPOSITORY/issues/$ISSUE_NUMBER" > "$RUNNER_TEMP/issue.json"
+          jq -e --arg owner "$GITHUB_REPOSITORY_OWNER" \
+            '.state == "open" and .user.login == $owner and (.pull_request | not)' "$RUNNER_TEMP/issue.json" >/dev/null
+          live_enabled=$(gh api "repos/$GITHUB_REPOSITORY/actions/variables/AGENT_PIPELINE_ENABLED" --jq '.value')
+          [[ "$live_enabled" == true ]] || { echo '::error::Pipeline kill switch changed before publication'; exit 1; }
+          gh api --paginate --slurp "repos/$GITHUB_REPOSITORY/issues/$ISSUE_NUMBER/events?per_page=100" \
+            > "$RUNNER_TEMP/receipt-events.json"
+          python3 "$POLICY" receipt --events "$RUNNER_TEMP/receipt-events.json"
+
+          if [[ "$PR_NUMBER" != 0 ]]; then
+            current=$(gh api "repos/$GITHUB_REPOSITORY/pulls/$PR_NUMBER")
+            jq -e --arg head "$START_SHA" --arg branch "$BRANCH" --arg base "$BASE_REF" --arg repo "$GITHUB_REPOSITORY" \
+              '.state == "open" and .head.sha == $head and .head.ref == $branch and .head.repo.full_name == $repo and .base.ref == $base' \
+              <<< "$current" >/dev/null || { echo '::error::PR changed after authorization'; exit 1; }
+          else
+            if gh api "repos/$GITHUB_REPOSITORY/git/ref/heads/$BRANCH" >/dev/null 2>&1; then
+              echo '::error::Issue branch appeared after authorization'
+              exit 1
+            fi
+          fi
+          echo 'publishable=true' >> "$GITHUB_OUTPUT"
+
+      - name: Create a repository-scoped publisher token
+        if: steps.validate.outputs.publishable == 'true'
+        id: publisher_token
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3
+        with:
+          client-id: ${{ inputs.publisher_client_id }}
+          private-key: ${{ secrets.publisher_private_key }}
+          repositories: ${{ github.event.repository.name }}
+          permission-administration: read
+          permission-contents: write
+          permission-issues: write
+          permission-pull-requests: write
+
+      - name: Check out clean publication state with the App token
+        if: steps.validate.outputs.publishable == 'true'
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          ref: ${{ needs.authorize.outputs.start_sha }}
+          fetch-depth: 0
+          path: publication
+          token: ${{ steps.publisher_token.outputs.token }}
+          persist-credentials: true
+
+      - name: Publish exactly one branch and draft PR
+        if: steps.validate.outputs.publishable == 'true'
+        id: publish
+        shell: bash
+        env:
+          GH_TOKEN: ${{ steps.publisher_token.outputs.token }}
+          ISSUE_NUMBER: ${{ needs.authorize.outputs.issue_number }}
+          PR_NUMBER: ${{ needs.authorize.outputs.pr_number }}
+          MODE: ${{ needs.authorize.outputs.mode }}
+          BRANCH: ${{ needs.authorize.outputs.branch }}
+          BASE_REF: ${{ inputs.base_ref }}
+          START_SHA: ${{ needs.authorize.outputs.start_sha }}
+          POLICY: ${{ github.workspace }}/.atkandi-platform/scripts/pipeline_policy.py
+          RESULT_DIR: ${{ runner.temp }}/implementation-result
+        run: |
+          set -euo pipefail
+          echo 'published=false' >> "$GITHUB_OUTPUT"
+          if [[ -s "$RESULT_DIR/changes.patch" ]]; then
+            git -C publication apply --check "$RESULT_DIR/changes.patch"
+            git -C publication apply --index "$RESULT_DIR/changes.patch"
+          fi
+          git -C publication config user.name 'atkandi-publisher[bot]'
+          git -C publication config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          if ! git -C publication diff --cached --quiet HEAD; then
+            git -C publication commit -m "chore(issue-$ISSUE_NUMBER): implement requested change"
+          fi
+          head_sha=$(git -C publication rev-parse HEAD)
+          if [[ "$head_sha" != "$START_SHA" || "$PR_NUMBER" == 0 ]]; then
+            git -C publication push origin "HEAD:refs/heads/$BRANCH"
+          fi
+
+          python3 - "$RUNNER_TEMP/issue.json" > "$RUNNER_TEMP/pr-title" <<'PY'
+          import json
+          import pathlib
+          import sys
+          issue = json.loads(pathlib.Path(sys.argv[1]).read_text(encoding="utf-8"))
+          title = " ".join(str(issue.get("title") or "requested change").split())
+          title = title[:1].lower() + title[1:]
+          print(f"chore(issue-{issue['number']}): {title[:70]}")
+          PY
+          python3 "$POLICY" render \
+            --result "$RESULT_DIR/result.json" --issue "$RUNNER_TEMP/issue.json" \
+            --head-sha "$head_sha" --ci-state 'Pending on the published revision.' \
+            --review-state 'Pending until deterministic CI passes and the PR becomes ready.' \
+            --auto-merge-note 'Pending repository protection verification and owner approval.' \
+            --output "$RUNNER_TEMP/merge-brief.md"
+          pr_title=$(< "$RUNNER_TEMP/pr-title")
+
+          if [[ "$PR_NUMBER" != 0 ]]; then
+            pr_number=$PR_NUMBER
+            gh pr edit "$pr_number" --repo "$GITHUB_REPOSITORY" \
+              --title "$pr_title" --body-file "$RUNNER_TEMP/merge-brief.md"
+          else
+            pr_number=''
+            for attempt in 1 2 3; do
+              if pr_url=$(gh pr create --repo "$GITHUB_REPOSITORY" --draft --base "$BASE_REF" --head "$BRANCH" \
+                  --title "$pr_title" --body-file "$RUNNER_TEMP/merge-brief.md"); then
+                pr_number=${pr_url##*/}
+                break
+              fi
+              related=$(gh api --method GET "repos/$GITHUB_REPOSITORY/pulls" \
+                -f state=open -f head="$GITHUB_REPOSITORY_OWNER:$BRANCH" -f base="$BASE_REF" -f per_page=10)
+              related_count=$(jq 'length' <<< "$related")
+              (( related_count <= 1 )) || { echo '::error::Multiple pull requests exist for the Issue branch'; exit 1; }
+              if (( related_count == 1 )); then
+                pr_number=$(jq -r '.[0].number' <<< "$related")
+                break
+              fi
+              (( attempt == 3 )) || sleep 2
+            done
+            [[ "$pr_number" =~ ^[1-9][0-9]*$ ]] || { echo '::error::Unable to create or recover the Issue pull request'; exit 1; }
+          fi
+          current=$(gh pr view "$pr_number" --repo "$GITHUB_REPOSITORY" --json state,headRefName,headRefOid,baseRefName)
+          jq -e --arg branch "$BRANCH" --arg head "$head_sha" --arg base "$BASE_REF" \
+            '.state == "OPEN" and .headRefName == $branch and .headRefOid == $head and .baseRefName == $base' \
+            <<< "$current" >/dev/null || { echo '::error::Published PR does not match the committed revision'; exit 1; }
+
+          jq -n \
+            --argjson issue_number "$ISSUE_NUMBER" \
+            --argjson pr_number "$pr_number" \
+            --arg head_sha "$head_sha" \
+            '{issue_number:$issue_number,pr_number:$pr_number,head_sha:$head_sha}' \
+            > "$RUNNER_TEMP/publication.json"
+          {
+            echo 'published=true'
+            echo "pr_number=$pr_number"
+            echo "head_sha=$head_sha"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Record publication provenance
+        if: steps.publish.outputs.published == 'true'
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: publication-${{ github.run_id }}
+          path: |
+            ${{ runner.temp }}/publication.json
+            ${{ runner.temp }}/implementation-result/result.json
+          if-no-files-found: error
+          retention-days: 2
+
+  verify:
+    name: Published deterministic CI
+    needs: publish
+    if: needs.publish.outputs.published == 'true'
+    permissions:
+      contents: read
+    uses: atkandi111/.github/.github/workflows/ci.yml@main
+    with:
+      base_ref: ${{ inputs.base_ref }}
+      head_ref: ${{ needs.publish.outputs.head_sha }}
+      protected_paths: ${{ inputs.protected_paths }}
+      node_version: ${{ inputs.node_version }}
+      terraform_version: ${{ inputs.terraform_version }}
+      setup_command: ${{ inputs.setup_command }}
+      lint_command: ${{ inputs.lint_command }}
+      test_command: ${{ inputs.test_command }}
+      build_command: ${{ inputs.build_command }}
+      typecheck_command: ${{ inputs.typecheck_command }}
+      extra_command: ${{ inputs.extra_command }}
+
+  ci_failure:
+    name: Leave failed CI for correction
+    needs: [authorize, publish, verify]
+    if: always() && needs.publish.outputs.published == 'true' && needs.verify.result != 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      issues: write
+      pull-requests: write
+    steps:
+      - name: Keep work In Progress
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ISSUE_NUMBER: ${{ needs.authorize.outputs.issue_number }}
+          PR_NUMBER: ${{ needs.publish.outputs.pr_number }}
+        run: |
+          set -euo pipefail
+          jq -n '{labels:["agent:in-progress"]}' |
+            gh api --method POST "repos/$GITHUB_REPOSITORY/issues/$ISSUE_NUMBER/labels" --input - >/dev/null
+          jq -n '{labels:["agent:in-progress"]}' |
+            gh api --method POST "repos/$GITHUB_REPOSITORY/issues/$PR_NUMBER/labels" --input - >/dev/null
+          printf 'AUTOMATION STOPPED\n\nDeterministic CI failed on PR #%s. Correct the same PR, then dispatch Issue #%s for another bounded pass.\n' \
+            "$PR_NUMBER" "$ISSUE_NUMBER" > "$RUNNER_TEMP/ci-failure.md"
+          gh issue comment "$ISSUE_NUMBER" --repo "$GITHUB_REPOSITORY" --body-file "$RUNNER_TEMP/ci-failure.md"
+
+  finalize:
+    name: Ready for owner review
+    needs: [authorize, publish, verify]
+    if: needs.publish.outputs.published == 'true' && needs.verify.result == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      actions: read
+      contents: read
+    steps:
+      - name: Check out reviewed platform policy
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          repository: atkandi111/.github
+          ref: ${{ inputs.platform_ref }}
+          path: .atkandi-platform
+          persist-credentials: false
+
+      - name: Download publication provenance
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: publication-${{ github.run_id }}
+          path: ${{ runner.temp }}/publication
+
+      - name: Recheck the live kill switch before handoff
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          live_enabled=$(gh api "repos/$GITHUB_REPOSITORY/actions/variables/AGENT_PIPELINE_ENABLED" --jq '.value')
+          [[ "$live_enabled" == true ]] || { echo '::error::Pipeline kill switch changed before owner handoff'; exit 1; }
+
+      - name: Create a repository-scoped publisher token
+        id: publisher_token
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3
+        with:
+          client-id: ${{ inputs.publisher_client_id }}
+          private-key: ${{ secrets.publisher_private_key }}
+          repositories: ${{ github.event.repository.name }}
+          permission-administration: read
+          permission-contents: write
+          permission-issues: write
+          permission-pull-requests: write
+
+      - name: Verify protection, mark ready, and arm native auto-merge
+        shell: bash
+        env:
+          GH_TOKEN: ${{ steps.publisher_token.outputs.token }}
+          ISSUE_NUMBER: ${{ needs.authorize.outputs.issue_number }}
+          PR_NUMBER: ${{ needs.publish.outputs.pr_number }}
+          HEAD_SHA: ${{ needs.publish.outputs.head_sha }}
+          BASE_REF: ${{ inputs.base_ref }}
+          AUTO_MERGE_ENABLED: ${{ inputs.auto_merge_enabled }}
+          POLICY: ${{ github.workspace }}/.atkandi-platform/scripts/pipeline_policy.py
+          RESULT: ${{ runner.temp }}/publication/result.json
+        run: |
+          set -euo pipefail
+          [[ "$AUTO_MERGE_ENABLED" == true || "$AUTO_MERGE_ENABLED" == false ]] || {
+            echo '::error::auto_merge_enabled must be true or false'
+            exit 1
+          }
+          current=$(gh pr view "$PR_NUMBER" --repo "$GITHUB_REPOSITORY" --json state,isDraft,headRefOid,baseRefName)
+          jq -e --arg head "$HEAD_SHA" --arg base "$BASE_REF" \
+            '.state == "OPEN" and .headRefOid == $head and .baseRefName == $base' <<< "$current" >/dev/null || {
+              echo '::error::PR changed after deterministic CI'
+              exit 1
+            }
+          gh api "repos/$GITHUB_REPOSITORY/issues/$ISSUE_NUMBER" > "$RUNNER_TEMP/issue.json"
+          jq -e --arg owner "$GITHUB_REPOSITORY_OWNER" '.state == "open" and .user.login == $owner' \
+            "$RUNNER_TEMP/issue.json" >/dev/null || { echo '::error::Issue closed before handoff'; exit 1; }
+
+          auto_merge_safe=false
+          auto_merge_note='Owner approval and manual merge are required because automatic merge is disabled.'
+          if [[ "$AUTO_MERGE_ENABLED" == true ]]; then
+            repository=$(gh api "repos/$GITHUB_REPOSITORY")
+            protection_file="$RUNNER_TEMP/protection.json"
+            if [[ $(jq -r '.allow_auto_merge' <<< "$repository") == true ]] &&
+               gh api "repos/$GITHUB_REPOSITORY/branches/$BASE_REF/protection" > "$protection_file" 2>/dev/null &&
+               jq -e '
+                 .required_pull_request_reviews.required_approving_review_count >= 1 and
+                 .required_pull_request_reviews.dismiss_stale_reviews == true and
+                 .required_conversation_resolution.enabled == true and
+                 .required_status_checks.strict == true and
+                 ([.required_status_checks.contexts[]] | index("atkandi/owner-approval") != null) and
+                 ([.required_status_checks.contexts[] | select(. != "atkandi/owner-approval")] | length >= 1)
+               ' "$protection_file" >/dev/null; then
+              auto_merge_safe=true
+              auto_merge_note='Native auto-merge is armed; it still requires current owner approval, required CI, and resolved conversations.'
+            else
+              auto_merge_note='Owner approval and manual merge are required because enforceable auto-merge prerequisites were not verified.'
+            fi
+          fi
+
+          python3 "$POLICY" render \
+            --result "$RESULT" --issue "$RUNNER_TEMP/issue.json" --head-sha "$HEAD_SHA" \
+            --ci-state "Passed: $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID" \
+            --review-state 'Automatic native Codex review starts when the initial draft becomes ready; findings remain advisory.' \
+            --auto-merge-note "$auto_merge_note" --output "$RUNNER_TEMP/merge-brief.md"
+          gh pr edit "$PR_NUMBER" --repo "$GITHUB_REPOSITORY" --body-file "$RUNNER_TEMP/merge-brief.md"
+          gh pr edit "$PR_NUMBER" --repo "$GITHUB_REPOSITORY" --add-reviewer "$GITHUB_REPOSITORY_OWNER"
+          gh api --method DELETE "repos/$GITHUB_REPOSITORY/issues/$ISSUE_NUMBER/labels/agent:in-progress" \
+            >/dev/null 2>&1 || true
+          gh api --method DELETE "repos/$GITHUB_REPOSITORY/issues/$PR_NUMBER/labels/agent:in-progress" \
+            >/dev/null 2>&1 || true
+          if [[ $(jq -r '.isDraft' <<< "$current") == true ]]; then
+            gh pr ready "$PR_NUMBER" --repo "$GITHUB_REPOSITORY"
+          fi
+          if [[ "$auto_merge_safe" == true ]]; then
+            gh pr merge "$PR_NUMBER" --repo "$GITHUB_REPOSITORY" --auto --squash --match-head-commit "$HEAD_SHA"
+          fi

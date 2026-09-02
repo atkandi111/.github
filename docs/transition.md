@@ -1,45 +1,39 @@
-# One-pass transition runbook
+# Transition to automatic Issue-to-PR publication
 
-This runbook assumes the former custom pipeline has no production users. Keep existing product branches and pull requests intact; the transition changes the work-entry and verification path, not product history.
+The portfolio previously used native Codex Cloud implementation followed by a manual **Create PR** handoff. The transition replaces that middle handoff with a small Actions-hosted implementation and clean publisher. Existing product work is preserved.
 
-## Current state
+## Existing branches and pull requests
 
-- The platform and client transition pull requests are merged, and centralized reusable CI is active.
-- Portfolio reconciliation is active, the initial open-item backfill is complete, and its membership and lifecycle canary passed.
-- The D'EMAND exact-comment canary passed. Each newly onboarded repository or Codex Cloud environment still needs the disposable end-to-end Implementation-Issue-to-PR canary before it relies on that path.
-- D'EMAND's prior independent P0/P1 review was a useful one-off that caught a Firestore nested-undefined persistence defect; native GitHub Code Review is not yet proven portfolio-wide and must be canaried per repository.
-- Keep obsolete pipeline secrets, variables, and labels in an unverified repository until its canary succeeds; then remove them using the sequence below.
-
-## Merge order
-
-1. Merge the account `.github` transition first. Run `./tests/run.sh` and confirm the public reusable workflows remain callable by private client repositories.
-2. Merge each client transition. Re-run its pull-request checks after `atkandi111/.github@main` contains the new workflow contract.
-3. In each Codex Cloud environment, grant only that repository, install `policy/AGENTS.md` using `docs/cloud-setup.md`, and add no deployment or infrastructure credential.
-4. Run one disposable low-risk Issue-to-PR canary: publish the reviewed contract, post the owner's exact new top-level trigger comment, use **Create PR**, and confirm or convert the result to draft with a completed Merge Brief. Do not put the trigger in the Issue body.
-5. Enable native Code Review for that repository, let deterministic CI pass on the draft PR, then canary exact `@codex review` behavior. Keep the PR draft through consequential fixes and one fresh review; mark it ready only for owner handoff.
-6. After the canaries, remove obsolete `OPENAI_API_KEY` and `AGENT_*` / `PIPELINE_*` settings from repositories that had the former pipeline. Remove the old `agent` label when no historical workflow depends on it.
-7. Require deterministic CI on protected `main` branches. Keep production environments and infrastructure apply approvals separate.
-
-## Existing unmerged work
-
-- Continue existing product branches and pull requests; do not rebase, regenerate, or restart them merely for this transition.
-- Review and merge them normally. Add the Merge Brief headings when doing so improves the handoff, but do not block an otherwise ready PR on mechanical template migration.
-- If an old pipeline-generated draft PR exists, treat it as an ordinary draft PR. Its Issue remains context, but the removed workflow will not retry or publish another attempt.
+- Continue existing product branches and PRs normally. Do not regenerate, rebase, or close them merely for this transition.
+- The new pipeline reacts only to owner-created Implementation Issues opened after its caller is enabled. It does not bulk-process existing PRs.
+- Existing native Cloud commits that were never published remain separate recovery work; the pipeline does not guess or recreate them.
 
 ## Existing Issues
 
-- Do not bulk-edit or trigger open Issues.
-- Existing backlog and planning-parent Issues remain coordination records. They never become executable merely because they are in the portfolio Project or carry an old label.
-- When an existing repository Issue is ready to execute, confirm that it has an intended outcome, acceptance criteria, constraints, and out-of-scope section. The repository owner then posts the exact supported top-level `@codex implement this issue...` comment once.
-- Cross-repository work needs one separately authorized Implementation Issue in each affected repository. A parent that only coordinates them remains Planning/deferred; a parent that itself authorizes repository work may be an Implementation Issue.
+- Existing open Issues are not automatically authorized because their original `opened` event did not carry the new trusted receipt path.
+- Keep backlog and planning parents unchanged.
+- When an existing Issue is ready, either implement it manually or replace it with a newly reviewed Implementation Issue that links the original. Do not authorize it by adding `implementation` later.
+- Do not post native `@codex implement` comments after adopting this pipeline; doing so could start duplicate work.
 
 ## New Issues
 
-- Use **Implementation issue** by default for reviewed, ready work. When the coordinator creates it, immediately post the exact owner trigger without seeking a second approval. Publication itself remains non-executable. After **Create PR/Update PR**, confirm the result is draft, complete its Merge Brief, and verify the published SHA.
-- Use **Planning / deferred issue** only when publication should not start Codex, including a coordination-only parent.
-- Labels may communicate status but never grant or revoke execution authority.
-- Keep status and priority in the existing portfolio GitHub Project. Project fields do not grant authority.
+- Owner-created **Implementation issue**: queues automatically from its initial `implementation` label.
+- **Planning / deferred issue**: remains Todo and non-executable from its initial `planning` label.
+- One executable Issue stays repository-scoped and normally produces one PR. Cross-repository outcomes use one Planning parent and one Implementation subissue per repository.
 
-## Rollback
+## Rollout order
 
-If the canary exposes a Codex Cloud limitation, stop posting trigger comments. Continue using Issues for reviewed contracts, manual development, and centralized CI. Revert the platform release only when the shared verifier itself is faulty; do not restore the custom runner/publisher as a reflex.
+1. Merge the account `.github` implementation after its tests and owner review.
+2. Create the four required labels in every in-scope repository.
+3. Create/install the narrowly scoped publisher GitHub App and add the repository-local App Client ID/private-key settings.
+4. Add a dedicated non-production OpenAI project key to each repository.
+5. Keep both pipeline variables false while each client merges its thin agent and owner-approval callers.
+6. Enable automatic native Codex review in each connected repository.
+7. Protect `main` and enable auto-merge only where GitHub can enforce the full gate. Keep private unsupported repositories manual-merge.
+8. Enable the D'EMAND pipeline first and observe one real low-risk Implementation Issue. Then enable the remaining repositories one at a time.
+
+The infrastructure repository may later permit credential-free Terraform format/validate/test in its caller. Persistent plan/apply remains outside this pipeline.
+
+## Safe stop
+
+Set `AGENT_PIPELINE_ENABLED=false` to stop new implementation. Queued runs that reach authorization will no-op. Published PRs stay intact for ordinary human review. Disable `AGENT_AUTO_MERGE_ENABLED` separately when only automatic merging must stop.

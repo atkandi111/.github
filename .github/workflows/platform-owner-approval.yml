@@ -1,0 +1,13 @@
+name: Platform owner approval
+
+on:
+  pull_request_review:
+    types: [submitted]
+
+permissions:
+  contents: read
+  statuses: write
+
+jobs:
+  approval:
+    uses: ./.github/workflows/owner-approval.yml

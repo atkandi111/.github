@@ -2,7 +2,7 @@
 
 Read the repository's product and planning documentation before implementation. The executable Issue defines the requested scope; do not invent missing product intent.
 
-The portfolio-wide policy is installed as global Codex guidance by the Cloud environment. This file is the repository-specific overlay and must remain useful on its own for GitHub review and local Codex work.
+The portfolio-wide policy is loaded by the central implementation workflow. This file is the repository-specific overlay and must remain useful on its own for native GitHub review and local Codex work.
 
 ## Repository map
 
@@ -27,4 +27,4 @@ Document only rules that differ from, or add necessary context to, the portfolio
 
 ## Done
 
-Keep changes within the Issue, update relevant documentation when durable behavior or workflow changes, add appropriate tests, run applicable checks, and complete the pull request's Merge Brief. If a meaningful user-visible or product decision is unspecified, stop and state the missing decision. The coordinator, not the implementation task, owns the independent review pass and owner handoff.
+Keep changes within the Issue, update relevant documentation when durable behavior or workflow changes, add appropriate tests, and run applicable checks. If a meaningful user-visible or product decision is unspecified, stop and state the missing decision. The clean publisher, not the implementation task, owns branch and pull-request publication. Deterministic CI and native Codex review precede owner handoff; only the owner authorizes merge.

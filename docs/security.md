@@ -2,36 +2,84 @@
 
 ## Authorization
 
-The executable contract is a reviewed Implementation Issue in one repository. The coordinator queues it by default with the repository owner's exact new top-level trigger comment; publication alone does not start Codex. The trigger authorizes one repository-scoped Cloud task and issue-specific branch. The coordinator uses native **Create PR/Update PR**, confirms the PR is draft, completes the Merge Brief, and verifies its published SHA. A Planning/deferred parent and the portfolio GitHub Project provide coordination and visibility only.
+A new run is authorized only by the immutable combination captured in the original GitHub `issues.opened` event:
 
-Codex Cloud's GitHub installation, user authorization, repository selection, and platform controls replace the former custom authorized-actor/label/kill-switch/attempt/concurrency guard. Do not recreate those controls inside this repository unless a demonstrated Cloud limitation makes one strictly necessary.
+- the repository owner authored and opened the Issue;
+- the initial label snapshot contains `implementation`; and
+- it does not contain `planning`.
+
+The intake workflow records `agent:authorized` as a machine-issued receipt before implementation. Manual recovery and owner-requested revisions require that receipt. A human-added later label, Issue/PR text, comment, Project field, similar wording, or another actor never authorizes execution. Closing the Issue before publication stops the publisher. The repository variable `AGENT_PIPELINE_ENABLED` is the kill switch and defaults to false.
+
+## Queue and attempts
+
+GitHub Actions `queue: max` serializes the reusable workflow by repository: one active run and up to 100 waiting runs. Different repositories have different concurrency groups. Cancellation is disabled and waiting-time FIFO is accepted; the system does not infer dependencies from Issue numbers or prose.
+
+`AGENT_MAX_ATTEMPTS` bounds reruns of the same GitHub event and defaults to two. A manual recovery dispatch is owner-only and requires the earlier trusted receipt. Exceeding GitHub's queue capacity produces a canceled, unexecuted run that must be explicitly recovered.
 
 ## Credential separation
 
-- The account `.github` repository is intentionally public. Public repository content and pull requests never receive the Portfolio credential; only the reviewed scheduled/manual reconciliation job on `main` reads `PORTFOLIO_PROJECT_TOKEN`.
-- The Codex task receives access only to its repository. It receives no Actions publishing token, portfolio-wide token, production credential, or persistent/shared infrastructure authority.
-- Pull-request CI uses `contents: read` and no deployment secrets.
-- Native Codex Code Review reads the published PR and applicable repository guidance as a quality gate. It does not receive or grant merge, deployment, Terraform plan/apply, or persistent-mutation authority.
-- Application repositories cannot provision infrastructure merely because Terraform exists elsewhere.
-- The infrastructure repository may let Codex edit infrastructure-as-code and run local or credential-free format, validate, lint, and test checks.
-- Credentialed Terraform plan is generated only from reviewed `main` in a separately controlled workflow. Apply requires explicit human authorization of that exact saved plan, provenance, and checksum. Prefer OIDC and narrowly scoped short-lived roles; keep any unavoidable provider token out of Codex, review, and pull-request jobs. Code/merge approval and production-plan approval are separate human decisions.
+| Boundary | Credentials and authority |
+| --- | --- |
+| Intake | Repository `GITHUB_TOKEN` with Issue/PR metadata and label access; no publisher or production credential. |
+| Codex implementation | `contents: read`, Issue read, and one dedicated non-production OpenAI project key through the official Codex Action proxy. No GitHub write, publisher, Project, deployment, or infrastructure credential. |
+| Clean publisher/finalizer | A one-hour GitHub App installation token downscoped to the current repository with Administration read and Contents/Issues/Pull requests write. No OpenAI, Project, deployment, or cloud credential. |
+| Pull-request CI | `contents: read`; no secret, OIDC, deployment, or persistent-infrastructure authority. |
+| Owner approval mirror | Repository status write only; accepts the repository owner's submitted GitHub review for the exact current commit. |
+| Portfolio reconciliation | The central `PORTFOLIO_PROJECT_TOKEN`; may add Project items and update Status only. It never reaches implementation or publisher jobs. |
+
+The publisher App private key is required. The workflow fails closed rather than falling back to `GITHUB_TOKEN`, because a workflow-created PR using that token can leave downstream CI waiting for manual workflow approval. The App must be installed only on selected repositories and must not receive Actions, Workflows, Deployments, Environments, Secrets, or cloud permissions.
+
+## Artifact and publisher boundary
+
+Codex edits an isolated checkout and emits only an implementation result, a binary-capable Git patch, and provenance containing repository, Issue, mode, exact start SHA, run ID/attempt, and patch SHA-256. It cannot push or open a PR.
+
+The publisher runs on a fresh runner and checkout. Before minting the App token it:
+
+1. validates the structured result and exact provenance;
+2. rechecks the open owner-authored Issue and trusted receipt;
+3. verifies the expected branch/PR state and start SHA;
+4. applies the patch with `git apply --check`; and
+5. rejects protected paths.
+
+The token is minted only after those checks. New work can create only `issue/<number>` and one draft PR. Revisions must fast-forward the same branch and PR; concurrent head changes fail instead of being overwritten. GitHub's published head SHA is verified before CI.
+
+The Codex job runs with `permission-profile: :workspace` and `safety-strategy: drop-sudo`. No privileged secret is used after Codex in that job. Its output remains untrusted until the separate publisher validates it.
 
 ## Protected paths
 
-The reusable CI workflow rejects changes to `.github/workflows/**` and `.github/actions/**` by default. Client callers may add repository-specific paths. It compares the immutable pull-request head with the trusted base using NUL-delimited, rename-disabled path output.
+The publisher and reusable CI always reject:
 
-An intentional verifier change is a platform or manually supervised maintenance change, not an ordinary implementation Issue. Merge it through a controlled transition before requiring the updated check; do not add a label-based bypass to untrusted pull-request code.
+- inherited Issue forms;
+- `.github/workflows/**`;
+- `.github/actions/**`;
+- root or nested `AGENTS.md`; and
+- the central pipeline/reconciliation helpers and client workflow templates.
 
-The public account `.github` repository protects `main` and requires its platform checks. Private client repositories that cannot enforce branch protection under the current GitHub plan must treat a failed check as a do-not-merge signal; human review remains their enforcement point.
+Client callers add repository-specific protected paths through `AGENT_PROTECTED_PATHS`. Application repositories should include Terraform, infrastructure, deployment-policy, migration, and other authority-bearing paths appropriate to that product. The infrastructure repository may deliberately allow infrastructure-as-code edits and credential-free format/validate/test checks, but it must not expose plan/apply or persistent credentials to the Issue pipeline.
 
-## Fail-closed behavior
+Verifier or policy changes are manually supervised platform work. There is no label or Issue-text bypass.
 
-Issue bodies and comments are untrusted data. Portfolio status mirroring compares comment fields as data and accepts only the exact unedited trigger from the repository owner; it never evaluates comment text as shell source. The `PORTFOLIO_PROJECT_TOKEN` remains confined to the central reconciliation job and can update membership and Status only through reviewed commands.
+## Review and merge
 
-- Invalid or non-immutable head SHAs fail before checkout.
-- A missing base reference fails the protected-path gate.
-- Any configured check failure fails CI.
-- Missing product intent must be surfaced for human direction rather than guessed.
-- No workflow merges, deploys, applies Terraform, or broadens repository access on behalf of Codex.
+Deterministic CI runs on the exact published SHA before the initial draft becomes ready. Native automatic Codex review then provides an advisory P0/P1 pass. The pipeline never parses review prose and an AI conclusion cannot authorize merge.
 
-Independent Codex review may identify P0/P1 defects but cannot approve merge or persistent effects. The final code approval point is human pull-request review and merge; production or shared-infrastructure execution has its own later human authorization.
+The reusable owner-approval workflow accepts only a review submitted by the repository owner on an `issue/<number>` PR in the same repository and binds `atkandi/owner-approval` to the review's exact commit. New commits have no successful status until the owner approves that revision.
+
+The publisher arms native auto-merge only when it can verify all of the following on the base branch:
+
+- repository auto-merge is enabled;
+- at least one approving review is required;
+- stale reviews are dismissed;
+- conversations must be resolved;
+- strict required status checks include `atkandi/owner-approval`; and
+- at least one additional deterministic check is required.
+
+If protection cannot be read or enforced—currently including private repositories on the account's GitHub plan—the pipeline leaves a ready PR for manual owner merge. It never recreates branch protection in a weaker workflow.
+
+## Infrastructure and deployment
+
+Application repositories receive no cloud provisioning authority. Infrastructure Codex work may edit and locally validate IaC, but persistent/shared/production plan and apply remain separate trusted post-merge workflows. Apply requires explicit human authorization of the reviewed plan and its provenance. Prefer narrowly scoped OIDC credentials; keep any provider token out of implementation, publisher, review, and PR CI.
+
+## Project boundary
+
+The Project mirrors lifecycle labels and PR state. It may update membership and Status but not Priority, Waiting On, or unrelated human fields. Project changes cannot execute, publish, review, approve, merge, deploy, or broaden repository authority.
