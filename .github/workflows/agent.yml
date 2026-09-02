@@ -623,7 +623,7 @@ jobs:
     if: needs.publish.outputs.published == 'true'
     permissions:
       contents: read
-    uses: $/.github/workflows/ci.yml
+    uses: ./.github/workflows/ci.yml
     with:
       base_ref: ${{ inputs.base_ref }}
       head_ref: ${{ needs.publish.outputs.head_sha }}

@@ -231,7 +231,7 @@ def test_workflow_trust_boundaries() -> None:
     require("pull-requests: write" not in implement_block and "publisher_private_key" not in implement_block, "implementation can publish")
     require("permission-profile: \":workspace\"" in implement_block and "safety-strategy: drop-sudo" in implement_block, "Codex sandbox boundary missing")
     require("Clean deterministic publisher" in agent and "apply --check" in agent, "clean publisher validation missing")
-    require("uses: $/.github/workflows/ci.yml" in agent, "pipeline verifier does not use the agent workflow\'s exact platform revision")
+    require("uses: ./.github/workflows/ci.yml" in agent, "pipeline verifier does not use the agent workflow\'s exact platform revision")
     require('gsub("@"; "&#64;")' in agent and 'gsub("#"; "&#35;")' in agent, "untrusted handoff prose can trigger GitHub side effects")
     require("actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1" in agent, "publisher App token is not pinned")
     require("permission-administration: read" in agent and "permission-contents: write" in agent, "publisher App permissions drifted")
@@ -353,7 +353,7 @@ def test_reusable_ci_boundary() -> None:
 def test_action_pins() -> None:
     for path in (ROOT / ".github/workflows").glob("*.yml"):
         for reference in re.findall(r"(?m)^\s*uses:\s+([^\s#]+)", path.read_text()):
-            if reference.startswith("./") or reference.startswith("$/") or reference.startswith("atkandi111/.github/"):
+            if reference.startswith("./") or reference.startswith("atkandi111/.github/"):
                 continue
             require(re.search(r"@[0-9a-f]{40}$", reference) is not None, f"mutable Action reference in {path.name}: {reference}")
 
