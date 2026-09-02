@@ -1,15 +1,17 @@
 name: Implementation issue
-description: Publish a reviewed contract; the owner delegates it later with one exact comment.
+description: Publish ready work; the coordinator queues it immediately with the exact owner comment.
 title: ""
 labels: []
 body:
   - type: markdown
     attributes:
       value: |
-        Publishing records a reviewed contract but does not start Codex. Choose one cohesive, reviewable repository outcome that should normally produce one pull request. Combine tightly coupled same-repository details; split independent or cross-repository outcomes. A parent that only coordinates subissues must use Planning / deferred instead.
+        Choose Implementation only for reviewed work that is ready to run. The coordinator posts the exact owner comment below immediately after creating the Issue; GitHub Issue publication alone does not start Codex. Use Planning / deferred as the explicit opt-out for backlogged, unsettled, or coordination-only work.
+
+        Choose one cohesive, reviewable repository outcome that should normally produce one branch and one pull request. Combine tightly coupled same-repository details; split independent or cross-repository outcomes.
 
         Planning guide: https://github.com/atkandi111/dev-platform/blob/main/docs/issue-planning.md
-        When this repository is ready for its next implementation, the repository owner queues it by posting this exact new top-level comment without quoting or editing it:
+        The repository owner queues it by posting this exact new top-level comment without quoting or editing it:
 
         `@codex implement this issue in this repository. Open one draft pull request and complete its Merge Brief.`
 
@@ -58,10 +60,26 @@ body:
       description: Commands, checks, or manual evidence expected before review.
     validations:
       required: false
+  - type: textarea
+    id: dependencies-overlap
+    attributes:
+      label: Dependencies and likely overlap
+      description: Optional. Link predecessors and note sensitive files or surfaces that should not change concurrently.
+      placeholder: "Dependencies: none\nLikely touchpoints: ..."
+    validations:
+      required: false
   - type: input
     id: parent
     attributes:
       label: Parent Issue
       description: Optional link when this is part of a larger outcome.
+    validations:
+      required: false
+  - type: input
+    id: integration-contract
+    attributes:
+      label: Integration contract revision
+      description: Required for cross-repository subissues. Provide the parent URL and reviewed revision; otherwise write None.
+      placeholder: "https://github.com/OWNER/REPOSITORY/issues/123 @ revision 2"
     validations:
       required: false
