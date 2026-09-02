@@ -36,4 +36,4 @@ The infrastructure repository may later permit credential-free Terraform format/
 
 ## Safe stop
 
-Set `AGENT_PIPELINE_ENABLED=false` to stop new implementation. Queued runs that reach authorization will no-op. Published PRs stay intact for ordinary human review. Disable `AGENT_AUTO_MERGE_ENABLED` separately when only automatic merging must stop.
+Set `AGENT_PIPELINE_ENABLED=false` to stop new implementation. Queued runs that reach authorization will no-op. Published PRs stay intact for ordinary human review. Set `AGENT_AUTO_MERGE_ENABLED=false` to prevent future PRs from being armed. Native auto-merge is persistent GitHub state, so also disable auto-merge on every already-armed PR in the GitHub UI or with `gh pr merge PR_NUMBER --disable-auto --repo OWNER/REPOSITORY`.

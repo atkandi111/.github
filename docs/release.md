@@ -31,7 +31,7 @@ Enable repository auto-merge only after those settings exist. The Issue pipeline
 ## Rollback
 
 1. Set `AGENT_PIPELINE_ENABLED=false` in affected repositories. Existing PRs remain ordinary reviewable PRs.
-2. Set `AGENT_AUTO_MERGE_ENABLED=false` if the merge gate is suspect.
+2. Set `AGENT_AUTO_MERGE_ENABLED=false` to prevent future arming. For every PR already armed, immediately disable its persistent native auto-merge state in the GitHub UI or with `gh pr merge PR_NUMBER --disable-auto --repo OWNER/REPOSITORY`.
 3. Revert the central release on `main` through a reviewed PR. Client callers then use the restored central behavior on their next event.
 4. Revert a client caller separately if only that repository is affected.
 5. Revoke the publisher App private key or uninstall the App from a repository if publication authority may be compromised. Revoke the dedicated OpenAI key independently if implementation usage is suspect.

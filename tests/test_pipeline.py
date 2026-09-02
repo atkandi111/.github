@@ -466,6 +466,7 @@ def test_documented_operating_contract() -> None:
     ):
         require(phrase.lower() in corpus.lower(), f"documentation is missing {phrase}")
     require("@codex implement this issue" not in corpus, "obsolete native implementation trigger remains")
+    require("--disable-auto" in corpus, "rollback omits already-armed native auto-merge state")
     require(len(read("policy/AGENTS.md").encode()) <= 4096, "shared policy exceeds the 4 KiB budget")
 
 
