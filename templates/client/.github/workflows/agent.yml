@@ -30,7 +30,7 @@ jobs:
       platform_ref: main
       pipeline_enabled: ${{ vars.AGENT_PIPELINE_ENABLED || 'false' }}
       auto_merge_enabled: ${{ vars.AGENT_AUTO_MERGE_ENABLED || 'false' }}
-      publisher_client_id: ${{ vars.PUBLISHER_APP_CLIENT_ID }}
+      publisher_app_id: ${{ vars.PUBLISHER_APP_ID }}
       protected_paths: ${{ vars.AGENT_PROTECTED_PATHS }}
       node_version: "22"
       setup_command: npm ci
