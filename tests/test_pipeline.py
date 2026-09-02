@@ -45,6 +45,9 @@ def test_issue_and_handoff_contract() -> None:
     brief = read(".github/pull_request_template.md")
     repository_agents = read("templates/client/AGENTS.md")
     trigger = "@codex implement this issue in this repository. Open one draft pull request and complete its Merge Brief."
+    for form in (implementation, planning):
+        require('title: ""' not in form, "Issue form declares an invalid empty title")
+        require("labels: []" not in form, "Issue form declares an invalid empty labels list")
     require(trigger in implementation, "implementation Issue does not show the exact owner trigger")
     require(trigger in policy, "shared policy drifted from the supported owner trigger")
     require(

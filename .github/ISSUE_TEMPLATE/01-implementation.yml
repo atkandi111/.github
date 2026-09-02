@@ -1,7 +1,5 @@
 name: Implementation issue
 description: Publish ready work; the coordinator queues it immediately with the exact owner comment.
-title: ""
-labels: []
 body:
   - type: markdown
     attributes:

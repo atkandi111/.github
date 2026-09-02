@@ -1,7 +1,5 @@
 name: Planning / deferred issue
 description: Explicitly defer or coordinate work without starting Codex.
-title: ""
-labels: []
 body:
   - type: markdown
     attributes:
