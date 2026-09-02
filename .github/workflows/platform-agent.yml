@@ -30,6 +30,7 @@ jobs:
       platform_ref: main
       pipeline_enabled: ${{ vars.AGENT_PIPELINE_ENABLED || 'false' }}
       auto_merge_enabled: ${{ vars.AGENT_AUTO_MERGE_ENABLED || 'false' }}
+      required_ci_context: Platform tests
       publisher_client_id: ${{ vars.PUBLISHER_APP_CLIENT_ID }}
       protected_paths: ${{ vars.AGENT_PROTECTED_PATHS }}
       test_command: ./tests/run.sh

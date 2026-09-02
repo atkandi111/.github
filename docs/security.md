@@ -72,7 +72,7 @@ The publisher arms native auto-merge only when it can verify all of the followin
 - stale reviews are dismissed;
 - conversations must be resolved;
 - strict required status checks include `atkandi/owner-approval`; and
-- at least one additional deterministic check is required.
+- the exact repository-specific deterministic CI context configured by the protected caller is required.
 
 If protection cannot be read or enforced—currently including private repositories on the account's GitHub plan—the pipeline leaves a ready PR for manual owner merge. It never recreates branch protection in a weaker workflow.
 

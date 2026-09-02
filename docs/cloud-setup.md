@@ -34,6 +34,7 @@ Create these Actions settings in the repository:
 | Variable | `PUBLISHER_APP_CLIENT_ID` | Publisher App Client ID. |
 | Variable | `AGENT_PIPELINE_ENABLED` | `false` during setup. |
 | Variable | `AGENT_AUTO_MERGE_ENABLED` | `false` until protection is verified. |
+| Variable | `AGENT_REQUIRED_CI_CONTEXT` | Exact required status context produced by this repository's deterministic CI caller. |
 | Variable | `AGENT_MAX_ATTEMPTS` | `2`. |
 | Variable | `AGENT_PROTECTED_PATHS` | Additional newline-separated repository-specific protected globs. |
 
@@ -64,13 +65,13 @@ Automatic review starts when the pipeline changes the initial draft PR to ready.
 
 Before setting `AGENT_AUTO_MERGE_ENABLED=true`, the default branch must enforce:
 
-- strict required deterministic CI;
+- strict required deterministic CI whose exact status context matches `AGENT_REQUIRED_CI_CONTEXT`;
 - required status `atkandi/owner-approval`;
 - at least one approving review;
 - dismissal of stale approvals after new commits; and
 - resolved review conversations.
 
-Also enable repository auto-merge. The pipeline rechecks these settings before arming `gh pr merge --auto`. If any check is absent or the API cannot read protection, it leaves manual owner merge in place.
+Also enable repository auto-merge. The pipeline rechecks these settings and the exact configured deterministic CI context before arming `gh pr merge --auto`. If any check is absent or the API cannot read protection, it leaves manual owner merge in place.
 
 The current GitHub plan cannot enforce branch protection on private client repositories. Keep `AGENT_AUTO_MERGE_ENABLED=false` there until the repository becomes public or the account has the required GitHub plan. Do not emulate approval enforcement inside a merge-capable workflow.
 

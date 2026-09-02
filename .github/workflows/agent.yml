@@ -29,6 +29,11 @@ on:
         required: false
         default: "false"
         type: string
+      required_ci_context:
+        description: Exact protected status context for repository deterministic CI.
+        required: false
+        default: ""
+        type: string
       publisher_client_id:
         required: false
         default: ""
@@ -736,6 +741,7 @@ jobs:
           HEAD_SHA: ${{ needs.publish.outputs.head_sha }}
           BASE_REF: ${{ inputs.base_ref }}
           AUTO_MERGE_ENABLED: ${{ steps.switches.outputs.auto_merge_enabled }}
+          REQUIRED_CI_CONTEXT: ${{ inputs.required_ci_context }}
           POLICY: ${{ github.workspace }}/.atkandi-platform/scripts/pipeline_policy.py
           RESULT: ${{ runner.temp }}/publication/result.json
         run: |
@@ -755,15 +761,16 @@ jobs:
           if [[ "$AUTO_MERGE_ENABLED" == true ]]; then
             repository=$(gh api "repos/$GITHUB_REPOSITORY")
             protection_file="$RUNNER_TEMP/protection.json"
-            if [[ $(jq -r '.allow_auto_merge' <<< "$repository") == true ]] &&
+            if [[ -n "${REQUIRED_CI_CONTEXT//[[:space:]]/}" ]] &&
+               [[ $(jq -r '.allow_auto_merge' <<< "$repository") == true ]] &&
                gh api "repos/$GITHUB_REPOSITORY/branches/$BASE_REF/protection" > "$protection_file" 2>/dev/null &&
-               jq -e '
+               jq -e --arg required_ci_context "$REQUIRED_CI_CONTEXT" '
                  .required_pull_request_reviews.required_approving_review_count >= 1 and
                  .required_pull_request_reviews.dismiss_stale_reviews == true and
                  .required_conversation_resolution.enabled == true and
                  .required_status_checks.strict == true and
                  ([.required_status_checks.contexts[]] | index("atkandi/owner-approval") != null) and
-                 ([.required_status_checks.contexts[] | select(. != "atkandi/owner-approval")] | length >= 1)
+                 ([.required_status_checks.contexts[]] | index($required_ci_context) != null)
                ' "$protection_file" >/dev/null; then
               auto_merge_safe=true
               auto_merge_note='Native auto-merge is armed; it still requires current owner approval, required CI, and resolved conversations.'
