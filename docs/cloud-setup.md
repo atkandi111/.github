@@ -4,19 +4,17 @@ Use one Codex Cloud environment per repository. Grant access only to that reposi
 
 ## Shared guidance
 
-Add a read-only GitHub token as the setup-only secret `DEV_PLATFORM_READ_TOKEN`. It needs access only to `atkandi111/dev-platform`. Configure this setup script:
+The account policy is public and needs no setup token. Configure this setup script:
 
 ```bash
 set -euo pipefail
 mkdir -p "$HOME/.codex"
 curl --fail --silent --show-error --location \
-  --header "Authorization: Bearer $DEV_PLATFORM_READ_TOKEN" \
-  --header "Accept: application/vnd.github.raw+json" \
-  https://api.github.com/repos/atkandi111/dev-platform/contents/policy/AGENTS.md?ref=main \
+  https://raw.githubusercontent.com/atkandi111/.github/main/policy/AGENTS.md \
   --output "$HOME/.codex/AGENTS.md"
 ```
 
-Use the same command as the maintenance script so every new task begins with the reviewed policy on `main`. Codex Cloud exposes setup secrets only during setup; do not copy the token into the repository or agent environment.
+Use the same command as the maintenance script so every new task begins with the reviewed policy on `main`. Do not add a GitHub token merely to read this public file.
 
 Repository-local `AGENTS.md` remains the source for repository commands and product-specific constraints. Codex layers it over the global policy.
 

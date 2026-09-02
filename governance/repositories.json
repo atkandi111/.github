@@ -5,13 +5,13 @@
     "number": 2,
     "name": "Atkandi Portfolio",
     "fields": {
-      "Status": ["Todo", "In Progress", "Review", "Done"],
+      "Status": ["Todo", "In Progress", "For Review", "Done"],
       "Priority": ["P0", "P1", "P2", "P3"],
       "Waiting On": ["Me", "Client"]
     }
   },
   "repositories": [
-    {"name": "atkandi111/dev-platform", "role": "governance"},
+    {"name": "atkandi111/.github", "role": "governance"},
     {"name": "atkandi111/demandph-website", "role": "client"},
     {"name": "atkandi111/Mahjongtale", "role": "client"},
     {"name": "atkandi111/rotary-binan-website", "role": "client"},

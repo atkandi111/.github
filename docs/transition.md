@@ -12,8 +12,8 @@ This runbook assumes the former custom pipeline has no production users. Keep ex
 
 ## Merge order
 
-1. Merge the `dev-platform` transition first. Run `./tests/run.sh` and confirm reusable workflow access is still enabled for the private client repositories.
-2. Merge each client transition. Re-run its pull-request checks after `dev-platform@main` contains the new workflow contract.
+1. Merge the account `.github` transition first. Run `./tests/run.sh` and confirm the public reusable workflows remain callable by private client repositories.
+2. Merge each client transition. Re-run its pull-request checks after `atkandi111/.github@main` contains the new workflow contract.
 3. In each Codex Cloud environment, grant only that repository, install `policy/AGENTS.md` using `docs/cloud-setup.md`, and add no deployment or infrastructure credential.
 4. Run one disposable low-risk Issue-to-PR canary: publish the reviewed contract, post the owner's exact new top-level trigger comment, use **Create PR**, and confirm or convert the result to draft with a completed Merge Brief. Do not put the trigger in the Issue body.
 5. Enable native Code Review for that repository, let deterministic CI pass on the draft PR, then canary exact `@codex review` behavior. Keep the PR draft through consequential fixes and one fresh review; mark it ready only for owner handoff.

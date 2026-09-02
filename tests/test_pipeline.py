@@ -38,11 +38,11 @@ def test_removed_custom_runtime() -> None:
 
 
 def test_issue_and_handoff_contract() -> None:
-    implementation = read("templates/client/.github/ISSUE_TEMPLATE/01-implementation.yml")
-    planning = read("templates/client/.github/ISSUE_TEMPLATE/02-planning.yml")
+    implementation = read(".github/ISSUE_TEMPLATE/01-implementation.yml")
+    planning = read(".github/ISSUE_TEMPLATE/02-planning.yml")
     planning_guide = read("docs/issue-planning.md")
     policy = read("policy/AGENTS.md")
-    brief = read("templates/client/.github/pull_request_template.md")
+    brief = read(".github/pull_request_template.md")
     repository_agents = read("templates/client/AGENTS.md")
     trigger = "@codex implement this issue in this repository. Open one draft pull request and complete its Merge Brief."
     require(trigger in implementation, "implementation Issue does not show the exact owner trigger")
@@ -71,6 +71,11 @@ def test_issue_and_handoff_contract() -> None:
     cloud_setup = read("docs/cloud-setup.md")
     require("owner's exact top-level" in readme, "README queue action drifted")
     require("publishing the Issue alone does not start Codex" in cloud_setup, "canary trigger evidence missing")
+    require("DEV_PLATFORM_READ_TOKEN" not in cloud_setup, "public shared guidance still requires a read token")
+    require(
+        "raw.githubusercontent.com/atkandi111/.github/main/policy/AGENTS.md" in cloud_setup,
+        "Cloud setup does not fetch the public account policy",
+    )
     require("Create PR" in readme and "Create PR" in cloud_setup, "Create PR handoff missing")
     for field in ("Dependencies and likely overlap", "Integration contract revision"):
         require(field in implementation, f"implementation Issue is missing {field}")
@@ -84,11 +89,13 @@ def test_issue_and_handoff_contract() -> None:
     for heading in ("Outcome", "Acceptance evidence", "Validation", "Agent review", "Review focus", "Risk and rollback"):
         require(heading in brief, f"Merge Brief is missing {heading}")
     require(
-        read(".github/ISSUE_TEMPLATE/01-implementation.yml") == implementation,
-        "implementation Issue copies drifted",
+        not any((ROOT / "templates/client/.github/ISSUE_TEMPLATE").glob("*")),
+        "client Issue-form copies remain",
     )
-    require(read(".github/ISSUE_TEMPLATE/02-planning.yml") == planning, "planning Issue copies drifted")
-    require(read(".github/pull_request_template.md") == brief, "Merge Brief copies drifted")
+    require(
+        not (ROOT / "templates/client/.github/pull_request_template.md").exists(),
+        "client Merge Brief copy remains",
+    )
 
 
 def test_queue_and_review_operating_contract() -> None:
@@ -275,7 +282,7 @@ def test_reusable_ci_boundary() -> None:
         'patterns = [\n              ".github/workflows"' in ci,
         "immutable protected paths can be replaced by a caller",
     )
-    require("dev-platform/.github/workflows/ci.yml@main" in client, "client does not follow the main release channel")
+    require("/.github/.github/workflows/ci.yml@main" in client, "client does not follow the main release channel")
     require("workflow_dispatch" not in client, "obsolete custom dispatch remains")
 
 
@@ -295,20 +302,22 @@ def test_installer() -> None:
     with tempfile.TemporaryDirectory() as directory:
         target = pathlib.Path(directory)
         installed = subprocess.run(
-            [str(ROOT / "client-setup"), "install", str(target), "example/dev-platform"],
+            [str(ROOT / "client-setup"), "install", str(target), "example/.github"],
             text=True,
             capture_output=True,
             check=False,
         )
         require(installed.returncode == 0, installed.stderr)
         require(not (target / ".github/workflows/agent.yml").exists(), "installer added custom agent caller")
+        require(not (target / ".github/ISSUE_TEMPLATE").exists(), "installer copied account-default Issue forms")
+        require(not (target / ".github/pull_request_template.md").exists(), "installer copied the account Merge Brief")
         require(
-            "example/dev-platform/.github/workflows/ci.yml@main"
+            "example/.github/.github/workflows/ci.yml@main"
             in (target / ".github/workflows/ci.yml").read_text(),
             "installer did not set the release channel",
         )
         repeated = subprocess.run(
-            [str(ROOT / "client-setup"), "install", str(target), "example/dev-platform"],
+            [str(ROOT / "client-setup"), "install", str(target), "example/.github"],
             text=True,
             capture_output=True,
             check=False,
@@ -322,7 +331,7 @@ def test_installer() -> None:
                 str(ROOT / "client-setup"),
                 "onboard",
                 str(target),
-                "example/dev-platform",
+                "example/.github",
                 "atkandi111/demandph-website",
             ],
             text=True,
@@ -338,7 +347,7 @@ def test_installer() -> None:
                 str(ROOT / "client-setup"),
                 "onboard",
                 str(target),
-                "example/dev-platform",
+                "example/.github",
                 "example/unregistered-client",
             ],
             text=True,
@@ -346,6 +355,26 @@ def test_installer() -> None:
             check=False,
         )
         require(unregistered.returncode != 0, "onboarding accepted an unregistered client")
+
+    with tempfile.TemporaryDirectory() as directory:
+        target = pathlib.Path(directory)
+        (target / ".github/ISSUE_TEMPLATE").mkdir(parents=True)
+        (target / ".github/ISSUE_TEMPLATE/local.yml").write_text("name: local\n")
+        installed = subprocess.run(
+            [str(ROOT / "client-setup"), "install", str(target), "example/.github"],
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+        require(installed.returncode == 0, installed.stderr)
+        checked = subprocess.run(
+            [str(ROOT / "client-setup"), "check", str(target)],
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+        require(checked.returncode != 0, "local Issue template silently shadowed account defaults")
+        require("overrides account defaults" in checked.stderr, "template override failure is unclear")
 
 
 def test_portfolio_reconciliation_contract() -> None:
@@ -359,7 +388,7 @@ def test_portfolio_reconciliation_contract() -> None:
     for repository in (
         "atkandi111/Mahjongtale",
         "atkandi111/demandph-website",
-        "atkandi111/dev-platform",
+        "atkandi111/.github",
         "atkandi111/infrastructure",
         "atkandi111/rotary-binan-website",
     ):

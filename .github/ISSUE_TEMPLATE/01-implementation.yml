@@ -10,7 +10,7 @@ body:
 
         Choose one cohesive, reviewable repository outcome that should normally produce one branch and one pull request. Combine tightly coupled same-repository details; split independent or cross-repository outcomes.
 
-        Planning guide: https://github.com/atkandi111/dev-platform/blob/main/docs/issue-planning.md
+        Planning guide: https://github.com/atkandi111/.github/blob/main/docs/issue-planning.md
         The repository owner queues it by posting this exact new top-level comment without quoting or editing it:
 
         `@codex implement this issue in this repository. Open one draft pull request and complete its Merge Brief.`
