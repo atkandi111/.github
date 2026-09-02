@@ -250,6 +250,7 @@ def test_workflow_trust_boundaries() -> None:
     require("PUBLISHER_APP_CLIENT_ID is not configured" in agent, "missing publisher identity does not fail closed")
     require("token: ${{ steps.publisher_token.outputs.token }}" in agent, "publication does not use the scoped App token")
     require("AGENT_PIPELINE_ENABLED" in caller and "AGENT_AUTO_MERGE_ENABLED" in caller, "kill switches missing")
+    require("live_auto_merge" in agent and "steps.switches.outputs.auto_merge_enabled" in agent, "auto-merge kill switch is not rechecked live")
     require("owner-approval.yml@main" in approval_caller, "owner approval caller is not centralized")
     require("@codex implement" not in agent and "@codex review" not in agent, "workflow triggers native Codex text commands")
 

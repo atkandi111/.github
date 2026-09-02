@@ -688,13 +688,32 @@ jobs:
           path: ${{ runner.temp }}/publication
 
       - name: Recheck the live kill switch before handoff
+        id: switches
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
+          REQUESTED_AUTO_MERGE: ${{ inputs.auto_merge_enabled }}
         run: |
           set -euo pipefail
           live_enabled=$(gh api "repos/$GITHUB_REPOSITORY/actions/variables/AGENT_PIPELINE_ENABLED" --jq '.value')
           [[ "$live_enabled" == true ]] || { echo '::error::Pipeline kill switch changed before owner handoff'; exit 1; }
+          [[ "$REQUESTED_AUTO_MERGE" == true || "$REQUESTED_AUTO_MERGE" == false ]] || {
+            echo '::error::auto_merge_enabled must be true or false'
+            exit 1
+          }
+          live_auto_merge=false
+          if value=$(gh api "repos/$GITHUB_REPOSITORY/actions/variables/AGENT_AUTO_MERGE_ENABLED" --jq '.value' 2>/dev/null); then
+            [[ "$value" == true || "$value" == false ]] || {
+              echo '::error::Live auto-merge switch must be true or false'
+              exit 1
+            }
+            live_auto_merge=$value
+          fi
+          effective_auto_merge=false
+          if [[ "$REQUESTED_AUTO_MERGE" == true && "$live_auto_merge" == true ]]; then
+            effective_auto_merge=true
+          fi
+          echo "auto_merge_enabled=$effective_auto_merge" >> "$GITHUB_OUTPUT"
 
       - name: Create a repository-scoped publisher token
         id: publisher_token
@@ -716,15 +735,11 @@ jobs:
           PR_NUMBER: ${{ needs.publish.outputs.pr_number }}
           HEAD_SHA: ${{ needs.publish.outputs.head_sha }}
           BASE_REF: ${{ inputs.base_ref }}
-          AUTO_MERGE_ENABLED: ${{ inputs.auto_merge_enabled }}
+          AUTO_MERGE_ENABLED: ${{ steps.switches.outputs.auto_merge_enabled }}
           POLICY: ${{ github.workspace }}/.atkandi-platform/scripts/pipeline_policy.py
           RESULT: ${{ runner.temp }}/publication/result.json
         run: |
           set -euo pipefail
-          [[ "$AUTO_MERGE_ENABLED" == true || "$AUTO_MERGE_ENABLED" == false ]] || {
-            echo '::error::auto_merge_enabled must be true or false'
-            exit 1
-          }
           current=$(gh pr view "$PR_NUMBER" --repo "$GITHUB_REPOSITORY" --json state,isDraft,headRefOid,baseRefName)
           jq -e --arg head "$HEAD_SHA" --arg base "$BASE_REF" \
             '.state == "OPEN" and .headRefOid == $head and .baseRefName == $base' <<< "$current" >/dev/null || {
