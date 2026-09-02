@@ -15,7 +15,7 @@ Create a private GitHub App owned by `atkandi111` with:
 - No Actions, Workflows, Deployments, Environments, Secrets, organization, Project, or cloud permissions.
 - Installation limited to the repositories using the pipeline.
 
-Generate a private key and record the App ID (the numeric identifier shown in the App settings). The workflow requests a one-hour installation token and downscopes it again to the current repository and these exact permissions. Keep the long-lived private key only as a repository Actions secret; never put it in commands, Issues, PRs, logs, or Codex environments.
+Generate a private key and record the App's Client ID. The workflow requests a one-hour installation token and downscopes it again to the current repository and these exact permissions. Keep the long-lived private key only as a repository Actions secret; never put it in commands, Issues, PRs, logs, or Codex environments.
 
 ## 2. Configure each repository while disabled
 
@@ -31,7 +31,7 @@ Create these Actions settings in the repository:
 | --- | --- | --- |
 | Secret | `OPENAI_API_KEY` | Key from a dedicated non-production OpenAI project for this repository. |
 | Secret | `PUBLISHER_APP_PRIVATE_KEY` | Publisher App private key. |
-| Variable | `PUBLISHER_APP_ID` | Publisher App ID. |
+| Variable | `PUBLISHER_APP_CLIENT_ID` | Publisher App Client ID. |
 | Variable | `AGENT_PIPELINE_ENABLED` | `false` during setup. |
 | Variable | `AGENT_AUTO_MERGE_ENABLED` | `false` until protection is verified. |
 | Variable | `AGENT_MAX_ATTEMPTS` | `2`. |

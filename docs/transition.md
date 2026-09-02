@@ -25,7 +25,7 @@ The portfolio previously used native Codex Cloud implementation followed by a ma
 
 1. Merge the account `.github` implementation after its tests and owner review.
 2. Create the four required labels in every in-scope repository.
-3. Create/install the narrowly scoped publisher GitHub App and add the repository-local App ID/private-key settings.
+3. Create/install the narrowly scoped publisher GitHub App and add the repository-local App Client ID/private-key settings.
 4. Add a dedicated non-production OpenAI project key to each repository.
 5. Keep both pipeline variables false while each client merges its thin agent and owner-approval callers.
 6. Enable automatic native Codex review in each connected repository.

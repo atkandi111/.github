@@ -29,7 +29,7 @@ on:
         required: false
         default: "false"
         type: string
-      publisher_app_id:
+      publisher_client_id:
         required: false
         default: ""
         type: string
@@ -414,7 +414,7 @@ jobs:
           START_SHA: ${{ needs.authorize.outputs.start_sha }}
           BASE_REF: ${{ inputs.base_ref }}
           PROTECTED_PATHS: ${{ inputs.protected_paths }}
-          PUBLISHER_APP_ID: ${{ inputs.publisher_app_id }}
+          PUBLISHER_CLIENT_ID: ${{ inputs.publisher_client_id }}
           POLICY: ${{ github.workspace }}/.atkandi-platform/scripts/pipeline_policy.py
           RESULT_DIR: ${{ runner.temp }}/implementation-result
         run: |
@@ -454,8 +454,8 @@ jobs:
               --body-file "$RUNNER_TEMP/implementation-handoff.md"
             exit 0
           fi
-          [[ -n "${PUBLISHER_APP_ID//[[:space:]]/}" ]] || {
-            echo '::error::PUBLISHER_APP_ID is not configured'
+          [[ -n "${PUBLISHER_CLIENT_ID//[[:space:]]/}" ]] || {
+            echo '::error::PUBLISHER_APP_CLIENT_ID is not configured'
             exit 1
           }
           if [[ ! -s "$patch" ]]; then
@@ -499,7 +499,7 @@ jobs:
         id: publisher_token
         uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3
         with:
-          app-id: ${{ inputs.publisher_app_id }}
+          client-id: ${{ inputs.publisher_client_id }}
           private-key: ${{ secrets.publisher_private_key }}
           repositories: ${{ github.event.repository.name }}
           permission-administration: read
@@ -719,7 +719,7 @@ jobs:
         id: publisher_token
         uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3
         with:
-          app-id: ${{ inputs.publisher_app_id }}
+          client-id: ${{ inputs.publisher_client_id }}
           private-key: ${{ secrets.publisher_private_key }}
           repositories: ${{ github.event.repository.name }}
           permission-administration: read

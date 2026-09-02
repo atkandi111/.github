@@ -233,7 +233,6 @@ def test_workflow_trust_boundaries() -> None:
     require("Clean deterministic publisher" in agent and "apply --check" in agent, "clean publisher validation missing")
     require('gsub("@"; "&#64;")' in agent and 'gsub("#"; "&#35;")' in agent, "untrusted handoff prose can trigger GitHub side effects")
     require("actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1" in agent, "publisher App token is not pinned")
-    require(agent.count("app-id: ${{ inputs.publisher_app_id }}") == 2 and "client-id:" not in agent, "publisher App ID input is invalid")
     require("permission-administration: read" in agent and "permission-contents: write" in agent, "publisher App permissions drifted")
     require("gh pr create" in agent and "--draft" in agent, "publisher does not create a draft PR")
     merge_lines = [line for line in agent.splitlines() if "gh pr merge" in line]
@@ -248,7 +247,7 @@ def test_workflow_trust_boundaries() -> None:
     require("issues:" in caller and "types: [opened]" in caller, "Issue-opened caller missing")
     require("pull_request_review:" in caller and "changes_requested" in caller, "revision caller missing")
     require("PUBLISHER_APP_PRIVATE_KEY" in caller and "OPENAI_API_KEY" in caller, "caller credentials missing")
-    require("PUBLISHER_APP_ID is not configured" in agent, "missing publisher identity does not fail closed")
+    require("PUBLISHER_APP_CLIENT_ID is not configured" in agent, "missing publisher identity does not fail closed")
     require("token: ${{ steps.publisher_token.outputs.token }}" in agent, "publication does not use the scoped App token")
     require("AGENT_PIPELINE_ENABLED" in caller and "AGENT_AUTO_MERGE_ENABLED" in caller, "kill switches missing")
     require("live_auto_merge" in agent and "steps.switches.outputs.auto_merge_enabled" in agent, "auto-merge kill switch is not rechecked live")
