@@ -43,6 +43,7 @@ def test_issue_and_handoff_contract() -> None:
     planning_guide = read("docs/issue-planning.md")
     policy = read("policy/AGENTS.md")
     brief = read("templates/client/.github/pull_request_template.md")
+    repository_agents = read("templates/client/AGENTS.md")
     trigger = "@codex implement this issue in this repository. Open one draft pull request and complete its Merge Brief."
     require(trigger in implementation, "implementation Issue does not show the exact owner trigger")
     require(trigger in policy, "shared policy drifted from the supported owner trigger")
@@ -50,11 +51,14 @@ def test_issue_and_handoff_contract() -> None:
         "id: codex-authorization" not in implementation,
         "Issue form still submits an unsupported Issue-body trigger",
     )
-    require("Publishing records a reviewed contract but does not start Codex" in implementation, "publish boundary missing")
+    require("coordinator queues it immediately" in implementation, "default coordinator queue contract missing")
+    require("Issue publication alone does not start Codex" in implementation, "native publish boundary missing")
     require("one draft pull request" in implementation, "one-Issue/one-PR contract missing")
     require("Create PR" in implementation, "Create PR handoff missing from implementation form")
     require("docs/issue-planning.md" in implementation, "implementation Issue does not link planning guidance")
-    require("does not authorize or start Codex" in planning, "planning opt-out boundary missing")
+    require("explicit opt-out" in planning, "planning opt-out is not explicit")
+    require("does not authorize or start Codex" in planning, "planning authorization boundary missing")
+    require("do not post the implementation trigger" in planning, "planning trigger prohibition missing")
     require("docs/issue-planning.md" in planning, "planning Issue does not link planning guidance")
     for contract in (
         "one cohesive, reviewable repository outcome",
@@ -68,7 +72,16 @@ def test_issue_and_handoff_contract() -> None:
     require("owner's exact top-level" in readme, "README queue action drifted")
     require("publishing the Issue alone does not start Codex" in cloud_setup, "canary trigger evidence missing")
     require("Create PR" in readme and "Create PR" in cloud_setup, "Create PR handoff missing")
-    for heading in ("Outcome", "Acceptance evidence", "Validation", "Review focus", "Risk and rollback"):
+    for field in ("Dependencies and likely overlap", "Integration contract revision"):
+        require(field in implementation, f"implementation Issue is missing {field}")
+    for contract in ("Published head SHA", "Independent Codex P0/P1 review", "Consequential findings"):
+        require(contract in brief, f"Merge Brief is missing {contract}")
+    for guidance in (policy, repository_agents):
+        require("## Code Review Rules" in guidance, "durable Code Review rules missing")
+        require("P0/P1" in guidance, "Code Review severity scope missing")
+        require("speculative P2/P3" in guidance, "Code Review noise boundary missing")
+    require(len(policy.encode()) <= 4096, "shared policy exceeds the 4 KiB lean-guidance budget")
+    for heading in ("Outcome", "Acceptance evidence", "Validation", "Agent review", "Review focus", "Risk and rollback"):
         require(heading in brief, f"Merge Brief is missing {heading}")
     require(
         read(".github/ISSUE_TEMPLATE/01-implementation.yml") == implementation,
@@ -76,6 +89,40 @@ def test_issue_and_handoff_contract() -> None:
     )
     require(read(".github/ISSUE_TEMPLATE/02-planning.yml") == planning, "planning Issue copies drifted")
     require(read(".github/pull_request_template.md") == brief, "Merge Brief copies drifted")
+
+
+def test_queue_and_review_operating_contract() -> None:
+    policy = read("policy/AGENTS.md")
+    planning = read("docs/issue-planning.md")
+    governance = read("docs/governance-rollout.md")
+    cloud = read("docs/cloud-setup.md")
+    security = read("docs/security.md")
+    readme = read("README.md")
+
+    for phrase in (
+        "2–3 independent implementations",
+        "merged and `main` CI is green",
+        "finished Cloud task without a verified draft PR",
+        "integration contract",
+        "parent URL and revision",
+    ):
+        require(phrase in policy or phrase in planning, f"queue/dependency contract missing: {phrase}")
+    for phase in (
+        "Queued, dispatched/running, implemented but unpublished",
+        "agent review",
+        "owner review",
+    ):
+        require(phase.lower() in governance.lower(), f"documented lifecycle phase missing: {phase}")
+    require("@codex review" in cloud and "@codex review" in governance, "native review trigger missing")
+    require("cannot post as the repository owner" in planning, "manual owner-trigger boundary missing")
+    require("one fresh review" in governance and "one fresh review" in policy, "review loop is not bounded")
+    require("Create PR/Update PR" in cloud and "Create PR/Update PR" in policy, "native publication owner missing")
+    require("full head SHA" in cloud and "published head sha" in readme.lower(), "published SHA check missing")
+    require("exact saved plan, provenance, and checksum" in security, "infrastructure approval boundary missing")
+
+    workflow_corpus = "\n".join(path.read_text() for path in (ROOT / ".github/workflows").glob("*.yml"))
+    require("@codex review" not in workflow_corpus, "custom Actions review trigger was added")
+    require("automatic review" not in workflow_corpus.lower(), "automatic AI-review workflow was added")
 
 
 def load_status_module():
@@ -342,6 +389,7 @@ def main() -> None:
     tests = (
         test_removed_custom_runtime,
         test_issue_and_handoff_contract,
+        test_queue_and_review_operating_contract,
         test_portfolio_status_lifecycle,
         test_missing_project_access,
         test_reusable_ci_boundary,

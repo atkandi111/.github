@@ -36,3 +36,22 @@ Before enabling this as the normal queue path, publish one disposable Implementa
 The first D'EMAND canary confirmed this sequence: the initial Issue-body mention did not start a task, while the later top-level comment did. The task completed, **Create PR** published the branch, and the operator converted the pull request to draft before review. See [issue #60](https://github.com/atkandi111/demandph-website/issues/60) and [PR #61](https://github.com/atkandi111/demandph-website/pull/61).
 
 Issue-body mentions, quoted or edited text, and comments from other actors are unsupported. Keep the exact top-level owner comment as the single queue action; do not rebuild the former dispatcher.
+
+The coordinator posts that comment automatically only when it is authenticated as the repository owner. Otherwise the owner must post it manually; the Issue remains `Todo` and no task starts until that happens.
+
+## Native pull-request publication
+
+Codex Cloud may prepare a branch without publishing a pull request automatically. The coordinator owns the native **Create PR/Update PR** action after the task finishes, then must:
+
+1. confirm or convert the pull request to draft;
+2. complete its Merge Brief;
+3. verify that GitHub's full head SHA matches the published task output; and
+4. keep the task counted as active until those checks pass.
+
+Do not provide a reusable GitHub PAT or add a custom publisher. Native repository access is enough; force pushes, direct pushes to `main`, merge, deployment, and production mutation remain outside the task.
+
+## Native Code Review
+
+In [Codex Code Review settings](https://chatgpt.com/codex/settings/code-review), enable **Code review** for each repository after its Cloud environment exists. Automatic reviews are unnecessary: after deterministic CI passes on the real draft PR, the coordinator posts exactly `@codex review` so the review is explicitly sequenced and separate from implementation. GitHub Code Review reports P0/P1 findings and follows applicable `AGENTS.md` rules.
+
+Canary the exact draft-PR behavior once per repository. A passing canary requires the 👀 reaction followed by a posted GitHub review. If draft review is unsupported, make the PR ready, request the review immediately, and return it to draft if consequential fixes are needed. Record the exact behavior; do not claim success from the comment alone.

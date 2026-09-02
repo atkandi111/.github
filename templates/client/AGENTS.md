@@ -19,6 +19,12 @@ Document the important application directories here.
 
 Document only rules that differ from, or add necessary context to, the portfolio defaults.
 
+## Code Review Rules
+
+- Report only consequential P0/P1 defects: security or authentication failures, data loss or corruption, broken persistence, incompatible integration contracts, unsafe permissions or secret exposure, broken rollback or deployment assumptions, serious user-visible regressions, or missing tests that leave serious behavior unverified.
+- Do not report style, naming, minor maintainability, speculative P2/P3 improvements, or objections to settled product decisions.
+- Review is a quality gate only; it never authorizes merge, deployment, Terraform plan/apply, or persistent changes.
+
 ## Done
 
-Keep changes within the Issue, update relevant documentation when durable behavior or workflow changes, add appropriate tests, run applicable checks, and complete the pull request's Merge Brief. If a meaningful user-visible or product decision is unspecified, stop and state the missing decision.
+Keep changes within the Issue, update relevant documentation when durable behavior or workflow changes, add appropriate tests, run applicable checks, and complete the pull request's Merge Brief. If a meaningful user-visible or product decision is unspecified, stop and state the missing decision. The coordinator, not the implementation task, owns the independent review pass and owner handoff.
