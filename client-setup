@@ -7,6 +7,7 @@ template_root="$platform_root/templates/client"
 client_files=(
   AGENTS.md
   PROJECT.md
+  .github/workflows/agent.yml
   .github/workflows/ci.yml
   .github/workflows/governance.yml
 )
@@ -25,7 +26,8 @@ usage() {
     '  ./client-setup install TARGET OWNER/REPOSITORY' \
     '  ./client-setup check TARGET' \
     '  ./client-setup install-canary TARGET OWNER/REPOSITORY COMMIT_SHA' \
-    '  ./client-setup check-canary TARGET'
+    '  ./client-setup check-canary TARGET' \
+    '  ./client-setup labels CLIENT_OWNER/REPOSITORY'
 }
 
 require_portfolio_registration() {
@@ -48,8 +50,25 @@ onboard_client() {
   install_client main "$target" "$platform_repository"
   printf '%s\n' \
     'Portfolio onboarding remains:' \
-    '1. Run the Portfolio membership audit workflow.' \
-    '2. Verify one disposable Issue canary is added, then close it.'
+    "1. Run: $platform_root/client-setup labels $client_repository" \
+    '2. Configure the publisher App, the dedicated OpenAI key, and disabled-by-default variables.' \
+    '3. Run the Portfolio membership audit workflow.'
+}
+
+configure_labels() {
+  [[ $# -eq 1 ]] || { usage >&2; return 64; }
+  local repository=$1
+  [[ $repository =~ ^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$ ]] || {
+    echo 'invalid client repository: expected OWNER/REPOSITORY' >&2
+    return 64
+  }
+  command -v gh >/dev/null || { echo 'GitHub CLI is required' >&2; return 1; }
+  gh label create implementation --repo "$repository" --color 1d76db \
+    --description 'Owner-created reviewed work queued for implementation' --force
+  gh label create planning --repo "$repository" --color d4c5f9 \
+    --description 'Planning, deferred, backlogged, or coordination-only work' --force
+  gh label create agent:authorized --repo "$repository" --color 0e8a16 \
+    --description 'Trusted receipt from the owner-authored Issue opened event' --force
 }
 
 absolute_directory() {
@@ -104,6 +123,7 @@ install_client() {
   for relative in "${client_files[@]}"; do
     mkdir -p "$(dirname "$target/$relative")"
     sed -e "s|YOUR_OWNER/.github|$repository|g" -e "s|@main|@$version|g" \
+      -e "s|platform_ref: main|platform_ref: $version|g" \
       "$template_root/$relative" > "$target/$relative"
   done
 
@@ -112,7 +132,7 @@ install_client() {
     'Next:' \
     '1. Replace template guidance and tailor CI commands.' \
     "2. Run: $platform_root/client-setup $check_command \"$target\"" \
-    '3. Configure the repository Codex Cloud environment from docs/cloud-setup.md.'
+    '3. Configure the Issue pipeline from docs/cloud-setup.md.'
 }
 
 check_client() {
@@ -128,12 +148,8 @@ check_client() {
   done
   [[ $failed == false ]] || return 1
 
-  if [[ -e "$target/.github/workflows/agent.yml" ]]; then
-    echo 'obsolete custom agent workflow found' >&2
-    failed=true
-  fi
   for relative in "${client_files[@]}"; do
-    if grep -En 'YOUR_OWNER/\.github|YOUR_ORG/dev-platform|OPENAI_API_KEY|AGENT_PIPELINE_ENABLED|PIPELINE_ENABLED' "$target/$relative"; then
+    if grep -En 'YOUR_OWNER/\.github|YOUR_ORG/dev-platform' "$target/$relative"; then
       echo "obsolete or incomplete pipeline configuration found in $relative" >&2
       failed=true
     fi
@@ -142,6 +158,22 @@ check_client() {
       "$target/.github/workflows/ci.yml" "$target/.github/workflows/governance.yml"; then
     echo "workflow callers do not use the expected release reference: $expected" >&2
     failed=true
+  fi
+  if ! grep -Eq "/\.github/\.github/workflows/agent\.yml${expected}" \
+      "$target/.github/workflows/agent.yml"; then
+    echo "agent workflow callers do not use the expected release reference: $expected" >&2
+    failed=true
+  fi
+  if [[ $mode == canary ]]; then
+    grep -Eq 'platform_ref: [0-9a-f]{40}' "$target/.github/workflows/agent.yml" || {
+      echo 'agent canary does not pin its matching platform policy helpers' >&2
+      failed=true
+    }
+  else
+    grep -Fq 'platform_ref: main' "$target/.github/workflows/agent.yml" || {
+      echo 'agent caller does not follow the platform main policy helpers' >&2
+      failed=true
+    }
   fi
   for relative in "${account_default_overrides[@]}"; do
     if [[ -e "$target/$relative" || -L "$target/$relative" ]]; then
@@ -160,7 +192,7 @@ check_client() {
     '- Protect main and require deterministic CI.' \
     '- Verify the account-level Issue and pull-request templates in GitHub.' \
     '- Keep pull-request CI free of deployment credentials.' \
-    '- Configure Codex Cloud using docs/cloud-setup.md.' \
+    '- Configure the Issue pipeline and native Codex review using docs/cloud-setup.md.' \
     '- Keep the portfolio Project for visibility, not authorization.'
 }
 
@@ -170,5 +202,6 @@ case ${1:-} in
   check) shift; check_client main "$@" ;;
   install-canary) shift; install_client canary "$@" ;;
   check-canary) shift; check_client canary "$@" ;;
+  labels) shift; configure_labels "$@" ;;
   *) usage >&2; exit 64 ;;
 esac

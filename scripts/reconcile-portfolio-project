@@ -70,6 +70,7 @@ status_items_query='query($login: String!, $number: Int!, $endCursor: String) {
               url
               state
               stateReason
+              labels(first: 20) { nodes { name } }
               repository { nameWithOwner owner { login } }
             }
             ... on PullRequest {
@@ -92,7 +93,12 @@ status_items_query='query($login: String!, $number: Int!, $endCursor: String) {
               ... on ProjectV2ItemFieldPullRequestValue {
                 field { ... on ProjectV2Field { name } }
                 pullRequests(first: 20) {
-                  nodes { state isDraft reviewDecision mergedAt }
+                  nodes {
+                    state
+                    isDraft
+                    reviewDecision
+                    mergedAt
+                  }
                 }
               }
             }
@@ -160,6 +166,8 @@ list_project_status_items() {
           is_draft: (.content.isDraft // false),
           review_decision: (.content.reviewDecision // null),
           merged_at: (.content.mergedAt // null),
+          labels: ([.content.labels.nodes[].name]),
+          execution_started: ([.content.labels.nodes[].name] | index("agent:authorized") != null),
           current_status: ([
             .fieldValues.nodes[]
             | select(.__typename == "ProjectV2ItemFieldSingleSelectValue" and .field.name == "Status")
@@ -208,21 +216,7 @@ build_status_input() {
   while IFS= read -r item_json; do
     repository=$(jq -r '.repository' <<< "$item_json")
     grep -Fqx "$repository" "$seen_file" || continue
-    kind=$(jq -r '.kind' <<< "$item_json")
-    owner_triggered=false
-    if [[ $kind == Issue ]]; then
-      number=$(jq -r '.number' <<< "$item_json")
-      owner=$(jq -r '.owner' <<< "$item_json")
-      comments_file=$work_dir/issue-comments
-      if ! gh api --paginate --slurp "repos/$repository/issues/$number/comments?per_page=100" > "$comments_file"; then
-        echo "unable to read Issue comments: $repository#$number" >&2
-        exit 1
-      fi
-      owner_triggered=$(python3 "$status_planner" trigger --owner "$owner" < "$comments_file")
-      [[ $owner_triggered == true || $owner_triggered == false ]] || { echo 'invalid trigger decision' >&2; exit 1; }
-    fi
-    jq -c --argjson owner_triggered "$owner_triggered" '. + {owner_triggered: $owner_triggered}' \
-      <<< "$item_json" >> "$status_input_file"
+    printf '%s\n' "$item_json" >> "$status_input_file"
   done < "$status_raw_file"
 }
 

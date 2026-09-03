@@ -1,19 +1,16 @@
 name: Implementation issue
-description: Publish ready work; the coordinator queues it immediately with the exact owner comment.
+description: Publish reviewed work; the trusted implementation label queues it automatically.
+labels: ["implementation"]
 body:
   - type: markdown
     attributes:
       value: |
-        Choose Implementation only for reviewed work that is ready to run. The coordinator posts the exact owner comment below immediately after creating the Issue; GitHub Issue publication alone does not start Codex. Use Planning / deferred as the explicit opt-out for backlogged, unsettled, or coordination-only work.
+        Choose Implementation only for reviewed work that is ready to run. An owner-created Issue from this form is queued automatically when the repository pipeline is enabled. Use Planning / deferred as the explicit opt-out for backlogged, unsettled, or coordination-only work.
 
         Choose one cohesive, reviewable repository outcome that should normally produce one branch and one pull request. Combine tightly coupled same-repository details; split independent or cross-repository outcomes.
 
         Planning guide: https://github.com/atkandi111/.github/blob/main/docs/issue-planning.md
-        The repository owner queues it by posting this exact new top-level comment without quoting or editing it:
-
-        `@codex implement this issue in this repository. Open one draft pull request and complete its Merge Brief.`
-
-        After Codex finishes, use **Create PR**, confirm or convert the pull request to draft, and verify its Merge Brief before review.
+        Do not add an `@codex implement` mention: native Cloud execution would duplicate the Actions-hosted implementation run. The pipeline publishes one ready pull request with its Merge Brief; normal pull-request CI and optional Codex review follow.
   - type: textarea
     id: outcome
     attributes:

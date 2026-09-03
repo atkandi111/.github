@@ -1,55 +1,62 @@
-# Codex Cloud setup
+# Issue pipeline setup
 
-Use one Codex Cloud environment per repository. Grant access only to that repository and do not add deployment, persistent infrastructure, or portfolio-wide GitHub credentials.
+GitHub Actions runs `openai/codex-action` with a dedicated API key to produce an isolated patch. A separate non-AI publisher validates and publishes it. Native Codex review is optional and uses the repository's Codex connection.
 
-## Shared guidance
+Do not also use an Issue-level `@codex implement` trigger; it would start a separate native Cloud task.
 
-The account policy is public and needs no setup token. Configure this setup script:
+## 1. Create the publisher GitHub App once
+
+Create a private GitHub App owned by `atkandi111` with repository permissions:
+
+- **Contents: Read and write**;
+- **Issues: Read and write**;
+- **Pull requests: Read and write**; and
+- Metadata read.
+
+Grant no Administration, Actions, Workflows, Deployments, Environments, Secrets, organization, Project, or cloud permission. Install it only on repositories using the pipeline. Generate a private key and record the App Client ID. Never put the key in commands, Issues, PRs, logs, or Codex environments.
+
+## 2. Configure each repository while disabled
 
 ```bash
-set -euo pipefail
-mkdir -p "$HOME/.codex"
-curl --fail --silent --show-error --location \
-  https://raw.githubusercontent.com/atkandi111/.github/main/policy/AGENTS.md \
-  --output "$HOME/.codex/AGENTS.md"
+./client-setup labels OWNER/REPOSITORY
 ```
 
-Use the same command as the maintenance script so every new task begins with the reviewed policy on `main`. Do not add a GitHub token merely to read this public file.
+Add these repository Actions settings:
 
-Repository-local `AGENTS.md` remains the source for repository commands and product-specific constraints. Codex layers it over the global policy.
+| Kind | Name | Value |
+| --- | --- | --- |
+| Secret | `OPENAI_API_KEY` | Dedicated non-production OpenAI project key. |
+| Secret | `PUBLISHER_APP_PRIVATE_KEY` | Publisher App private key. |
+| Variable | `PUBLISHER_APP_CLIENT_ID` | Publisher App Client ID. |
+| Variable | `AGENT_PIPELINE_ENABLED` | `false` during setup. |
+| Variable | `AGENT_PROTECTED_PATHS` | Additional newline-separated repository-specific protected globs. |
 
-## Required canary
+The Codex and publisher credentials exist in the same repository but never enter the same job. Missing configuration fails closed.
 
-Before enabling this as the normal queue path, publish one disposable Implementation Issue in a low-risk repository, then post the exact owner trigger comment and verify:
+Application repositories should protect infrastructure, deployment, migration, and other authority-bearing paths. Infrastructure repositories may permit IaC edits that credential-free PR CI can validate, but never expose plan/apply credentials to this pipeline.
 
-- publishing the Issue alone does not start Codex;
-- the exact new top-level owner comment starts exactly one task;
-- the task reads both the global and repository-local guidance;
-- it changes only the authorized repository;
-- after the task completes, **Create PR** publishes one pull request;
-- the operator confirms or converts that pull request to draft and completes the repository Merge Brief;
-- CI runs without secrets and protected workflow paths are rejected;
-- closing/canceling the test leaves no deployed or persistent resource.
+## 3. Install the thin callers
 
-The first D'EMAND canary confirmed this sequence: the initial Issue-body mention did not start a task, while the later top-level comment did. The task completed, **Create PR** published the branch, and the operator converted the pull request to draft before review. See [issue #60](https://github.com/atkandi111/demandph-website/issues/60) and [PR #61](https://github.com/atkandi111/demandph-website/pull/61).
+```bash
+./client-setup onboard /path/to/repository atkandi111/.github OWNER/REPOSITORY
+./client-setup check /path/to/repository
+```
 
-Issue-body mentions, quoted or edited text, and comments from other actors are unsupported. Keep the exact top-level owner comment as the single queue action; do not rebuild the former dispatcher.
+Tailor the separate CI caller, merge its PR manually while the pipeline is disabled, and then set `AGENT_PIPELINE_ENABLED=true`.
 
-The coordinator posts that comment automatically only when it is authenticated as the repository owner. Otherwise the owner must post it manually; the Issue remains `Todo` and no task starts until that happens.
+## 4. Optional native review
 
-## Native pull-request publication
+Connect the repository and enable automatic review in [Codex Code Review settings](https://chatgpt.com/codex/settings/code-review). Review remains advisory and is not read or enforced by the pipeline.
 
-Codex Cloud may prepare a branch without publishing a pull request automatically. The coordinator owns the native **Create PR/Update PR** action after the task finishes, then must:
+## First real Issue
 
-1. confirm or convert the pull request to draft;
-2. complete its Merge Brief;
-3. verify that GitHub's full head SHA matches the published task output; and
-4. keep the task counted as active until those checks pass.
+Use the first real low-risk Implementation Issue as the observation pass. Confirm one workflow run, one `issue/<number>` branch, one ready PR, the exact published SHA in its Merge Brief, and normal PR CI without a manual Create PR step.
 
-Do not provide a reusable GitHub PAT or add a custom publisher. Native repository access is enough; force pushes, direct pushes to `main`, merge, deployment, and production mutation remain outside the task.
+If a run fails, correct the configuration and dispatch the Issue number through the workflow's owner-only retry. Keep the same Issue and PR.
 
-## Native Code Review
+## Normal operation
 
-In [Codex Code Review settings](https://chatgpt.com/codex/settings/code-review), enable **Code review** for each repository after its Cloud environment exists. Automatic reviews are unnecessary: after deterministic CI passes on the real draft PR, the coordinator posts exactly `@codex review` so the review is explicitly sequenced and separate from implementation. GitHub Code Review reports P0/P1 findings and follows applicable `AGENTS.md` rules.
-
-Canary the exact draft-PR behavior once per repository. A passing canary requires the 👀 reaction followed by a posted GitHub review. If draft review is unsupported, make the PR ready, request the review immediately, and return it to draft if consequential fixes are needed. Record the exact behavior; do not claim success from the comment alone.
+- Implementation Issue creation queues work.
+- Planning / deferred creation does not.
+- An exact-current-SHA owner changes-requested review queues a revision on the same PR.
+- The owner manually merges when satisfied.

@@ -6,8 +6,8 @@ Use a concise sentence-case title without a final period. Keep status, priority,
 
 ## Branches and pull requests
 
-Human-created branches use `<type>/<short-kebab-scope>`, where `<type>` is `feat`, `fix`, `docs`, `refactor`, `test`, `ci`, or `chore`. Codex Cloud may choose its own generated branch name; branch naming is not an authorization boundary.
+Human-created branches use `<type>/<short-kebab-scope>`, where `<type>` is `feat`, `fix`, `docs`, `refactor`, `test`, `ci`, or `chore`. The Issue pipeline exclusively uses `issue/<number>` for its published branch. Branch naming supports idempotency but never creates authorization by itself.
 
-Pull-request titles and human-authored commit subjects use Conventional Commit form, for example `feat(search): add result filters`. Do not require Codex-generated intermediate commits to conform when the platform controls them.
+Pull-request titles and human-authored commit subjects use Conventional Commit form, for example `feat(search): add result filters`. The publisher normalizes its PR title and commit subject deterministically; Codex does not commit directly.
 
-The reusable governance workflow remains optional. Enable only deterministic rules that reduce real friction; do not block useful work merely to normalize Cloud-generated branch names.
+The reusable governance workflow remains optional. Enable only deterministic rules that reduce real friction.

@@ -1,10 +1,11 @@
 name: Planning / deferred issue
 description: Explicitly defer or coordinate work without starting Codex.
+labels: ["planning"]
 body:
   - type: markdown
     attributes:
       value: |
-        Planning / deferred is the explicit opt-out from the default Implementation queue. This Issue does not authorize or start Codex: do not post the implementation trigger here. Use it for backlogged or unsettled work, decisions, or a parent that coordinates repository-specific Implementation subissues.
+        Planning / deferred is the explicit opt-out from the default Implementation queue. This Issue does not authorize or start Codex. Use it for backlogged or unsettled work, decisions, or a parent that coordinates repository-specific Implementation subissues.
 
         Planning guide: https://github.com/atkandi111/.github/blob/main/docs/issue-planning.md
   - type: textarea

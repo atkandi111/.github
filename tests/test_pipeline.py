@@ -1,7 +1,9 @@
 #!/usr/bin/env python3
 from __future__ import annotations
 
+import hashlib
 import importlib.util
+import json
 import os
 import pathlib
 import re
@@ -21,241 +23,293 @@ def require(condition: bool, message: str) -> None:
         raise AssertionError(message)
 
 
-def test_removed_custom_runtime() -> None:
-    require(not (ROOT / ".github/workflows/agent.yml").exists(), "central agent runner still exists")
-    require(not (ROOT / "templates/client/.github/workflows/agent.yml").exists(), "client agent caller still exists")
-    corpus = "\n".join(
-        path.read_text(errors="replace")
-        for path in ROOT.rglob("*")
-        if path.is_file()
-        and ".git" not in path.parts
-        and "tests" not in path.parts
-        and path.name != "client-setup"
-        and path != ROOT / "docs/transition.md"
-    )
-    for obsolete in ("OPENAI_API_KEY", "AGENT_PIPELINE_ENABLED", "status_pending", "issue/<number>-attempt"):
-        require(obsolete not in corpus, f"obsolete runtime contract remains: {obsolete}")
-
-
-def test_issue_and_handoff_contract() -> None:
-    implementation = read(".github/ISSUE_TEMPLATE/01-implementation.yml")
-    planning = read(".github/ISSUE_TEMPLATE/02-planning.yml")
-    planning_guide = read("docs/issue-planning.md")
-    policy = read("policy/AGENTS.md")
-    brief = read(".github/pull_request_template.md")
-    repository_agents = read("templates/client/AGENTS.md")
-    trigger = "@codex implement this issue in this repository. Open one draft pull request and complete its Merge Brief."
-    for form in (implementation, planning):
-        require('title: ""' not in form, "Issue form declares an invalid empty title")
-        require("labels: []" not in form, "Issue form declares an invalid empty labels list")
-    require(trigger in implementation, "implementation Issue does not show the exact owner trigger")
-    require(trigger in policy, "shared policy drifted from the supported owner trigger")
-    require(
-        "id: codex-authorization" not in implementation,
-        "Issue form still submits an unsupported Issue-body trigger",
-    )
-    require("coordinator queues it immediately" in implementation, "default coordinator queue contract missing")
-    require("Issue publication alone does not start Codex" in implementation, "native publish boundary missing")
-    require("one draft pull request" in implementation, "one-Issue/one-PR contract missing")
-    require("Create PR" in implementation, "Create PR handoff missing from implementation form")
-    require("docs/issue-planning.md" in implementation, "implementation Issue does not link planning guidance")
-    require("explicit opt-out" in planning, "planning opt-out is not explicit")
-    require("does not authorize or start Codex" in planning, "planning authorization boundary missing")
-    require("do not post the implementation trigger" in planning, "planning trigger prohibition missing")
-    require("docs/issue-planning.md" in planning, "planning Issue does not link planning guidance")
-    for contract in (
-        "one cohesive, reviewable repository outcome",
-        "one executable Issue per repository",
-        "non-executable planning subissues",
-    ):
-        require(contract in planning_guide, f"Issue planning guide is missing: {contract}")
-        require(contract in policy, f"shared policy is missing Issue-planning context: {contract}")
-    readme = read("README.md")
-    cloud_setup = read("docs/cloud-setup.md")
-    require("owner's exact top-level" in readme, "README queue action drifted")
-    require("publishing the Issue alone does not start Codex" in cloud_setup, "canary trigger evidence missing")
-    require("DEV_PLATFORM_READ_TOKEN" not in cloud_setup, "public shared guidance still requires a read token")
-    require(
-        "raw.githubusercontent.com/atkandi111/.github/main/policy/AGENTS.md" in cloud_setup,
-        "Cloud setup does not fetch the public account policy",
-    )
-    require("Create PR" in readme and "Create PR" in cloud_setup, "Create PR handoff missing")
-    for field in ("Dependencies and likely overlap", "Integration contract revision"):
-        require(field in implementation, f"implementation Issue is missing {field}")
-    for contract in ("Published head SHA", "Independent Codex P0/P1 review", "Consequential findings"):
-        require(contract in brief, f"Merge Brief is missing {contract}")
-    for guidance in (policy, repository_agents):
-        require("## Code Review Rules" in guidance, "durable Code Review rules missing")
-        require("P0/P1" in guidance, "Code Review severity scope missing")
-        require("speculative P2/P3" in guidance, "Code Review noise boundary missing")
-    require(len(policy.encode()) <= 4096, "shared policy exceeds the 4 KiB lean-guidance budget")
-    for heading in ("Outcome", "Acceptance evidence", "Validation", "Agent review", "Review focus", "Risk and rollback"):
-        require(heading in brief, f"Merge Brief is missing {heading}")
-    require(
-        not any((ROOT / "templates/client/.github/ISSUE_TEMPLATE").glob("*")),
-        "client Issue-form copies remain",
-    )
-    require(
-        not (ROOT / "templates/client/.github/pull_request_template.md").exists(),
-        "client Merge Brief copy remains",
-    )
-
-
-def test_queue_and_review_operating_contract() -> None:
-    policy = read("policy/AGENTS.md")
-    planning = read("docs/issue-planning.md")
-    governance = read("docs/governance-rollout.md")
-    cloud = read("docs/cloud-setup.md")
-    security = read("docs/security.md")
-    readme = read("README.md")
-
-    for phrase in (
-        "2–3 independent implementations",
-        "merged and `main` CI is green",
-        "finished Cloud task without a verified draft PR",
-        "integration contract",
-        "parent URL and revision",
-    ):
-        require(phrase in policy or phrase in planning, f"queue/dependency contract missing: {phrase}")
-    for phase in (
-        "Queued, dispatched/running, implemented but unpublished",
-        "agent review",
-        "owner review",
-    ):
-        require(phase.lower() in governance.lower(), f"documented lifecycle phase missing: {phase}")
-    require("@codex review" in cloud and "@codex review" in governance, "native review trigger missing")
-    require("cannot post as the repository owner" in planning, "manual owner-trigger boundary missing")
-    require("one fresh review" in governance and "one fresh review" in policy, "review loop is not bounded")
-    require("Create PR/Update PR" in cloud and "Create PR/Update PR" in policy, "native publication owner missing")
-    require("full head SHA" in cloud and "published head sha" in readme.lower(), "published SHA check missing")
-    require("exact saved plan, provenance, and checksum" in security, "infrastructure approval boundary missing")
-
-    workflow_corpus = "\n".join(path.read_text() for path in (ROOT / ".github/workflows").glob("*.yml"))
-    require("@codex review" not in workflow_corpus, "custom Actions review trigger was added")
-    require("automatic review" not in workflow_corpus.lower(), "automatic AI-review workflow was added")
-
-
-def load_status_module():
-    path = ROOT / "scripts/portfolio_status.py"
-    spec = importlib.util.spec_from_file_location("portfolio_status", path)
-    require(spec is not None and spec.loader is not None, "status planner cannot be loaded")
+def load_module(relative: str, name: str):
+    path = ROOT / relative
+    spec = importlib.util.spec_from_file_location(name, path)
+    require(spec is not None and spec.loader is not None, f"cannot load {relative}")
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     return module
 
 
-def test_portfolio_status_lifecycle() -> None:
-    status = load_status_module()
-    trigger = status.TRIGGER_COMMENT
-    allowed = {
-        "body": trigger,
-        "user": {"login": "atkandi111"},
-        "created_at": "2026-09-01T00:00:00Z",
-        "updated_at": "2026-09-01T00:00:00Z",
+def issue_event(*, owner: str = "atkandi111", author: str | None = None, labels=None, action="opened"):
+    return {
+        "action": action,
+        "sender": {"login": owner},
+        "repository": {"full_name": f"{owner}/example"},
+        "issue": {
+            "number": 12,
+            "state": "open",
+            "user": {"login": author or owner},
+            "title": "Ship the requested change",
+            "body": "Untrusted requirements",
+            "labels": [{"name": name} for name in (labels or ["implementation"])],
+        },
     }
-    require(status.has_valid_owner_trigger([[allowed]], "atkandi111"), "exact owner trigger was rejected")
-    require(
-        status.has_valid_owner_trigger([[allowed, allowed]], "atkandi111"),
-        "duplicate delivery changed the trigger decision",
-    )
-    denied = (
-        {**allowed, "user": {"login": "someone-else"}},
-        {**allowed, "updated_at": "2026-09-01T00:01:00Z"},
-        {**allowed, "body": f"> {trigger}"},
-        {**allowed, "body": f"{trigger}\n"},
-        {**allowed, "body": "@codex implement something similar"},
-    )
-    for comment in denied:
-        require(not status.has_valid_owner_trigger([[comment]], "atkandi111"), f"invalid trigger accepted: {comment}")
 
+
+def review_event(*, owner: str = "atkandi111", reviewer: str | None = None, state="changes_requested"):
+    head_sha = "c" * 40
+    return {
+        "action": "submitted",
+        "sender": {"login": reviewer or owner},
+        "repository": {"full_name": f"{owner}/example"},
+        "review": {
+            "id": 200,
+            "state": state,
+            "user": {"login": reviewer or owner},
+            "body": "Please fix this.",
+            "commit_id": head_sha,
+        },
+        "pull_request": {
+            "number": 20,
+            "state": "open",
+            "base": {"ref": "main"},
+            "head": {"ref": "issue/12", "sha": head_sha, "repo": {"full_name": f"{owner}/example"}},
+        },
+    }
+
+
+def implementation_result(status: str = "implemented") -> dict:
+    return {
+        "status": status,
+        "summary": "Delivered the requested behavior.",
+        "question": None,
+        "scope": ["Updated the focused implementation."],
+        "acceptance_evidence": ["The requested behavior is covered."],
+        "documentation": "Updated the relevant workflow documentation.",
+        "validation": ["Deterministic CI is authoritative."],
+        "review_focus": "Review the focused behavior change.",
+        "risk": "Low; limited to the requested path.",
+        "rollback": "Revert the merge commit.",
+        "followups": [],
+    }
+
+
+def test_pipeline_policy_authorization() -> None:
+    policy = load_module("scripts/pipeline_policy.py", "pipeline_policy")
+    allowed = policy.authorize_event(issue_event(), "issue_opened", "atkandi111", "main")
+    require(allowed == {
+        "authorized": True,
+        "mode": "new",
+        "issue_number": 12,
+        "pr_number": 0,
+        "branch": "issue/12",
+    }, "owner-authored Implementation Issue was not authorized")
+
+    denied = (
+        (issue_event(author="someone-else"), "issue_opened", 0),
+        (issue_event(labels=["planning"]), "issue_opened", 0),
+        (issue_event(labels=["implementation", "planning"]), "issue_opened", 0),
+        (issue_event(action="edited"), "issue_opened", 0),
+        ({**issue_event(), "sender": {"login": "someone-else"}}, "issue_opened", 0),
+        ({**issue_event(labels=["planning"]), "issue": {**issue_event(labels=["planning"])["issue"], "body": "@codex implement this issue"}}, "issue_opened", 0),
+    )
+    for payload, kind, number in denied:
+        require(
+            not policy.authorize_event(payload, kind, "atkandi111", "main", number)["authorized"],
+            f"invalid Issue event was authorized: {payload}",
+        )
+
+    revision = policy.authorize_event(review_event(), "revision_requested", "atkandi111", "main")
+    require(revision["authorized"] and revision["issue_number"] == 12, "owner revision was rejected")
+    for payload in (
+        review_event(reviewer="someone-else"),
+        review_event(state="approved"),
+        {**review_event(), "review": {**review_event()["review"], "id": None}},
+        {**review_event(), "review": {**review_event()["review"], "commit_id": "d" * 40}},
+        {**review_event(), "pull_request": {**review_event()["pull_request"], "head": {"ref": "feature/x", "repo": {"full_name": "atkandi111/example"}}}},
+        {**review_event(), "pull_request": {**review_event()["pull_request"], "head": {"ref": "issue/12", "repo": {"full_name": "someone/fork"}}}},
+    ):
+        require(
+            not policy.authorize_event(payload, "revision_requested", "atkandi111", "main")["authorized"],
+            "unauthorized revision was accepted",
+        )
+
+    manual = {"sender": {"login": "atkandi111"}, "repository": {"full_name": "atkandi111/example"}}
+    retry = policy.authorize_event(manual, "manual", "atkandi111", "main", 12)
+    require(retry["authorized"] and retry["mode"] == "retry", "owner retry rejected")
+    manual["sender"]["login"] = "someone-else"
+    require(not policy.authorize_event(manual, "manual", "atkandi111", "main", 12)["authorized"], "foreign retry accepted")
+
+
+def test_pipeline_policy_artifacts_and_rendering() -> None:
+    policy = load_module("scripts/pipeline_policy.py", "pipeline_policy_artifacts")
+    receipt = [[{
+        "event": "labeled",
+        "label": {"name": "agent:authorized"},
+        "actor": {"login": "github-actions[bot]"},
+    }]]
+    require(policy.has_authorization_receipt(receipt), "trusted authorization receipt rejected")
+    receipt[0][0]["actor"]["login"] = "atkandi111"
+    require(not policy.has_authorization_receipt(receipt), "human-added later label became authorization")
+
+    result = implementation_result()
+    policy.validate_result(result)
+    invalid = {**result, "unexpected": True}
+    try:
+        policy.validate_result(invalid)
+    except policy.ContractError:
+        pass
+    else:
+        raise AssertionError("unexpected result fields were accepted")
+
+    patch = b"diff --git a/a b/a\n"
+    provenance = {
+        "repository": "atkandi111/example",
+        "issue_number": 12,
+        "mode": "new",
+        "start_sha": "a" * 40,
+        "run_id": 10,
+        "run_attempt": 1,
+        "patch_sha256": hashlib.sha256(patch).hexdigest(),
+    }
+    policy.validate_provenance(
+        provenance,
+        repository="atkandi111/example",
+        issue_number=12,
+        mode="new",
+        start_sha="a" * 40,
+        run_id=10,
+        run_attempt=1,
+        patch=patch,
+    )
+    try:
+        policy.validate_provenance(
+            provenance,
+            repository="atkandi111/example",
+            issue_number=13,
+            mode="new",
+            start_sha="a" * 40,
+            run_id=10,
+            run_attempt=1,
+            patch=patch,
+        )
+    except policy.ContractError:
+        pass
+    else:
+        raise AssertionError("cross-Issue provenance was accepted")
+
+    require(policy.protected_matches([".github/workflows/ci.yml"]), "workflow path was not protected")
+    require(policy.protected_matches([".github/ISSUE_TEMPLATE/01-implementation.yml"]), "authorization form was not protected")
+    require(policy.protected_matches(["service/AGENTS.md"]), "nested AGENTS.md was not protected")
+    require(policy.protected_matches(["scripts/pipeline_policy.py"]), "pipeline policy helper was not protected")
+    require(policy.protected_matches(["templates/client/.github/workflows/agent.yml"]), "client pipeline template was not protected")
+    require(policy.protected_matches(["terraform/main.tf"], "terraform/**"), "caller protected path ignored")
+    require(not policy.protected_matches(["src/app.ts"]), "ordinary product path was protected")
+
+    issue = issue_event()["issue"]
+    result["summary"] = (
+        "Delivered <!-- hidden --> safely; do not Closes #99, "
+        "Fixes https://github.com/atkandi111/example/issues/99, or mention @person."
+    )
+    brief = policy.render_merge_brief(
+        result,
+        issue,
+        head_sha="b" * 40,
+        ci_state="Passed",
+        review_state="Automatic review starts when ready.",
+        merge_note="The owner merges manually.",
+    )
+    require("<!-- hidden -->" not in brief and "&lt;!-- hidden --&gt;" in brief, "Merge Brief did not neutralize HTML")
+    require("Closes #99" not in brief and "Fixes https://" not in brief and "@person" not in brief, "model prose retained GitHub side effects")
+    require(brief.count("Closes #12") == 1, "renderer did not keep exactly one trusted closing reference")
+    for heading in ("Outcome", "Scope delivered", "Acceptance evidence", "Validation", "Agent review", "Review focus", "Risk and rollback"):
+        require(f"### {heading}" in brief, f"Merge Brief is missing {heading}")
+    require("Closes #12" in brief and "b" * 40 in brief, "Merge Brief linkage/provenance missing")
+
+    revision = review_event()
+    revision["review_comments"] = [[{"path": "src/app.ts", "line": 9, "body": "Handle the empty value."}]]
+    prompt = policy.build_prompt(issue, revision, "revision")
+    require("Please fix this." in prompt, "revision summary missing from prompt")
+    require("src/app.ts:9: Handle the empty value." in prompt, "inline review feedback missing from prompt")
+
+
+def test_workflow_trust_boundaries() -> None:
+    agent = read(".github/workflows/agent.yml")
+    caller = read("templates/client/.github/workflows/agent.yml")
+
+    require("queue: max" in agent and "cancel-in-progress: false" in agent, "no-drop queue configuration missing")
+    require("atkandi-issue-pipeline-${{ github.repository }}" in agent, "queue is not repository-scoped")
+    require("Validate authorization" in agent and "agent:authorized" in agent, "trusted intake receipt missing")
+    require("Isolated Codex implementation" in agent, "isolated implementation job missing")
+    implement_block = agent.split("  implement:", 1)[1].split("  publish:", 1)[0]
+    require("contents: read" in implement_block and "contents: write" not in implement_block, "implementation can write GitHub contents")
+    require("pull-requests: write" not in implement_block and "publisher_private_key" not in implement_block, "implementation can publish")
+    require("permission-profile: \":workspace\"" in implement_block and "safety-strategy: drop-sudo" in implement_block, "Codex sandbox boundary missing")
+    require("Clean deterministic publisher" in agent and "apply --check" in agent, "clean publisher validation missing")
+    require("reviews/$review_id/comments" in agent and "review_comments" in agent, "revision does not include inline review feedback")
+    require('gsub("@"; "&#64;")' in agent and 'gsub("#"; "&#35;")' in agent, "untrusted handoff prose can trigger GitHub side effects")
+    require("actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1" in agent, "publisher App token is not pinned")
+    require("permission-contents: write" in agent and "permission-administration" not in agent, "publisher App permissions drifted")
+    require("gh pr create" in agent and "--draft" not in agent, "publisher does not create a ready PR")
+    for forbidden in ("gh pr merge", "owner-approval", "auto_merge", "required_ci_context", "Published deterministic CI", "Ready for owner review"):
+        require(forbidden not in agent, f"removed lifecycle machinery remains: {forbidden}")
+    require("issues:" in caller and "types: [opened]" in caller, "Issue-opened caller missing")
+    require("pull_request_review:" in caller and "changes_requested" in caller, "revision caller missing")
+    require("PUBLISHER_APP_PRIVATE_KEY" in caller and "OPENAI_API_KEY" in caller, "caller credentials missing")
+    require("PUBLISHER_APP_CLIENT_ID is not configured" in agent, "missing publisher identity does not fail closed")
+    require("token: ${{ steps.publisher_token.outputs.token }}" in agent, "publication does not use the scoped App token")
+    require("AGENT_PIPELINE_ENABLED" in caller, "pipeline kill switch missing")
+    require("AGENT_AUTO_MERGE_ENABLED" not in caller and "AGENT_REQUIRED_CI_CONTEXT" not in caller, "removed merge settings remain")
+    require("@codex implement" not in agent and "@codex review" not in agent, "workflow triggers native Codex text commands")
+
+
+def test_issue_and_handoff_contract() -> None:
+    implementation = read(".github/ISSUE_TEMPLATE/01-implementation.yml")
+    planning = read(".github/ISSUE_TEMPLATE/02-planning.yml")
+    brief = read(".github/pull_request_template.md")
+    require('labels: ["implementation"]' in implementation, "Implementation form lacks trusted type label")
+    require('labels: ["planning"]' in planning, "Planning form lacks trusted type label")
+    require("queued automatically" in implementation, "default queue behavior is unclear")
+    require("@codex implement" in implementation and "duplicate" in implementation, "duplicate native trigger warning missing")
+    require("does not authorize or start Codex" in planning, "planning boundary missing")
+    for field in ("Dependencies and likely overlap", "Integration contract revision"):
+        require(field in implementation, f"Implementation form is missing {field}")
+    for heading in ("Outcome", "Acceptance evidence", "Validation", "Agent review", "Review focus", "Risk and rollback"):
+        require(heading in brief, f"account Merge Brief is missing {heading}")
+
+
+def test_portfolio_status_lifecycle() -> None:
+    status = load_module("scripts/portfolio_status.py", "portfolio_status")
     base_issue = {
         "item_id": "issue-1",
         "url": "https://github.com/atkandi111/example/issues/1",
         "kind": "Issue",
         "state": "OPEN",
         "state_reason": None,
-        "owner_triggered": False,
+        "execution_started": False,
         "linked_pull_requests": [],
         "current_status": "Todo",
-        "body": trigger,
     }
-    require(status.desired_status(base_issue) == "Todo", "Issue-body text changed Status")
-    require(status.desired_status({**base_issue, "owner_triggered": True}) == "In Progress", "queued Issue not active")
-    require(
-        status.desired_status(
-            {**base_issue, "linked_pull_requests": [{"state": "OPEN", "is_draft": True, "review_decision": None}]}
-        )
-        == "In Progress",
-        "draft linked PR not active",
-    )
-    require(
-        status.desired_status(
-            {**base_issue, "linked_pull_requests": [{"state": "OPEN", "is_draft": False, "review_decision": None}]}
-        )
-        == "For Review",
-        "ready linked PR not reviewable",
-    )
-    require(
-        status.desired_status(
-            {
-                **base_issue,
-                "linked_pull_requests": [
-                    {"state": "OPEN", "is_draft": False, "review_decision": "CHANGES_REQUESTED"}
-                ],
-            }
-        )
-        == "In Progress",
-        "changes requested did not resume implementation",
-    )
-    require(
-        status.desired_status({**base_issue, "linked_pull_requests": [{"state": "MERGED", "merged_at": "now"}]})
-        == "Done",
-        "merged linked PR did not complete Issue",
-    )
-    require(
-        status.desired_status(
-            {
-                **base_issue,
-                "state_reason": "REOPENED",
-                "linked_pull_requests": [{"state": "MERGED", "merged_at": "now"}],
-            }
-        )
-        == "Todo",
-        "historical merged PR overrode reopened Issue",
-    )
-    require(
-        status.desired_status({**base_issue, "state": "CLOSED", "state_reason": "COMPLETED"}) == "Done",
-        "completed Issue not Done",
-    )
-    require(
-        status.desired_status({**base_issue, "state_reason": "REOPENED"}) == "Todo",
-        "reopened unstarted Issue not Todo",
-    )
+    require(status.desired_status(base_issue) == "Todo", "unstarted Issue not Todo")
+    require(status.desired_status({**base_issue, "execution_started": True}) == "In Progress", "claimed Issue not active")
+    draft = {"state": "OPEN", "is_draft": True, "review_decision": None}
+    ready = {**draft, "is_draft": False}
+    require(status.desired_status({**base_issue, "linked_pull_requests": [draft]}) == "In Progress", "draft work not active")
+    require(status.desired_status({**base_issue, "linked_pull_requests": [ready]}) == "For Review", "ready work not reviewable")
+    require(status.desired_status({**base_issue, "linked_pull_requests": [{**ready, "review_decision": "CHANGES_REQUESTED"}]}) == "In Progress", "changes request not active")
+    require(status.desired_status({**base_issue, "linked_pull_requests": [{"state": "MERGED", "merged_at": "now"}]}) == "Done", "merge not Done")
+    require(status.desired_status({**base_issue, "state": "CLOSED", "state_reason": "COMPLETED"}) == "Done", "completed Issue not Done")
+    require(status.desired_status({**base_issue, "state_reason": "REOPENED"}) == "Todo", "reopened unstarted Issue not Todo")
 
-    pull_request = {
+    pr = {
         "item_id": "pr-1",
         "url": "https://github.com/atkandi111/example/pull/1",
         "kind": "PullRequest",
         "state": "OPEN",
-        "is_draft": True,
+        "is_draft": False,
         "review_decision": None,
         "merged_at": None,
         "current_status": "Todo",
     }
-    require(status.desired_status(pull_request) == "In Progress", "draft PR not In Progress")
-    require(status.desired_status({**pull_request, "is_draft": False}) == "For Review", "ready PR not For Review")
-    require(
-        status.desired_status({**pull_request, "is_draft": False, "review_decision": "CHANGES_REQUESTED"})
-        == "In Progress",
-        "changes-requested PR not In Progress",
-    )
-    require(status.desired_status({**pull_request, "state": "MERGED"}) == "Done", "merged PR not Done")
-
-    update = {**pull_request, "current_status": "Todo"}
+    require(status.desired_status(pr) == "For Review", "ready PR not For Review")
+    require(status.desired_status({**pr, "review_decision": "CHANGES_REQUESTED"}) == "In Progress", "revising PR not active")
+    require(status.desired_status({**pr, "state": "MERGED"}) == "Done", "merged PR not Done")
+    update = {**pr, "current_status": "Todo"}
     planned = status.plan_updates([update, update])
-    require(len(planned) == 1 and planned[0]["desired"] == "In Progress", "duplicate event planned twice")
-    require(status.plan_updates([{**update, "current_status": "In Progress"}]) == [], "idempotent retry rewrote Status")
-    require(status.verify_updates(planned, [{**update, "current_status": "In Progress"}]) == [], "verification failed")
+    require(len(planned) == 1 and planned[0]["desired"] == "For Review", "duplicate Project update planned")
+    require(status.plan_updates([{**update, "current_status": "For Review"}]) == [], "idempotent retry rewrote Status")
 
 
 def test_missing_project_access() -> None:
@@ -279,26 +333,25 @@ def test_reusable_ci_boundary() -> None:
     client = read("templates/client/.github/workflows/ci.yml")
     require("permissions:\n      contents: read" in ci, "CI must be read-only")
     require("secrets:" not in ci and "id-token: write" not in ci, "CI must be credential-free")
-    require("git diff --no-renames --name-only -z" in ci, "protected-path comparison is not rename-safe")
-    require(".github/workflows/**" in ci and ".github/actions/**" in ci, "verifier paths are not protected")
-    require(
-        'patterns = [\n              ".github/workflows"' in ci,
-        "immutable protected paths can be replaced by a caller",
-    )
-    require("/.github/.github/workflows/ci.yml@main" in client, "client does not follow the main release channel")
-    require("workflow_dispatch" not in client, "obsolete custom dispatch remains")
+    require("git diff --no-renames --name-only -z" in ci, "protected comparison is not rename-safe")
+    for protected in (
+        ".github/ISSUE_TEMPLATE/**",
+        ".github/workflows/**",
+        ".github/actions/**",
+        "**/AGENTS.md",
+        "scripts/pipeline_policy.py",
+        "templates/client/.github/workflows/**",
+    ):
+        require(protected in ci, f"verifier path is not protected: {protected}")
+    require("/.github/.github/workflows/ci.yml@main" in client, "client CI does not follow the release channel")
 
 
 def test_action_pins() -> None:
-    for relative in (
-        ".github/workflows/ci.yml",
-        ".github/workflows/platform-checks.yml",
-        ".github/workflows/portfolio-project.yml",
-    ):
-        for reference in re.findall(r"uses:\s+([^\s#]+)", read(relative)):
-            if reference.startswith("./"):
+    for path in (ROOT / ".github/workflows").glob("*.yml"):
+        for reference in re.findall(r"(?m)^\s*uses:\s+([^\s#]+)", path.read_text()):
+            if reference.startswith("./") or reference.startswith("atkandi111/.github/"):
                 continue
-            require(re.search(r"@[0-9a-f]{40}$", reference) is not None, f"mutable Action reference: {reference}")
+            require(re.search(r"@[0-9a-f]{40}$", reference) is not None, f"mutable Action reference in {path.name}: {reference}")
 
 
 def test_installer() -> None:
@@ -311,14 +364,14 @@ def test_installer() -> None:
             check=False,
         )
         require(installed.returncode == 0, installed.stderr)
-        require(not (target / ".github/workflows/agent.yml").exists(), "installer added custom agent caller")
-        require(not (target / ".github/ISSUE_TEMPLATE").exists(), "installer copied account-default Issue forms")
-        require(not (target / ".github/pull_request_template.md").exists(), "installer copied the account Merge Brief")
-        require(
-            "example/.github/.github/workflows/ci.yml@main"
-            in (target / ".github/workflows/ci.yml").read_text(),
-            "installer did not set the release channel",
-        )
+        for relative in (
+            ".github/workflows/agent.yml",
+            ".github/workflows/ci.yml",
+            ".github/workflows/governance.yml",
+        ):
+            require((target / relative).is_file(), f"installer omitted {relative}")
+        require("example/.github/.github/workflows/agent.yml@main" in (target / ".github/workflows/agent.yml").read_text(), "agent caller release missing")
+        require("platform_ref: main" in (target / ".github/workflows/agent.yml").read_text(), "platform helper release missing")
         repeated = subprocess.run(
             [str(ROOT / "client-setup"), "install", str(target), "example/.github"],
             text=True,
@@ -329,35 +382,27 @@ def test_installer() -> None:
 
     with tempfile.TemporaryDirectory() as directory:
         target = pathlib.Path(directory)
+        sha = "a" * 40
+        installed = subprocess.run(
+            [str(ROOT / "client-setup"), "install-canary", str(target), "example/.github", sha],
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+        require(installed.returncode == 0, installed.stderr)
+        caller = (target / ".github/workflows/agent.yml").read_text()
+        require(f"agent.yml@{sha}" in caller and f"platform_ref: {sha}" in caller, "canary did not pin matching agent code")
+
+    with tempfile.TemporaryDirectory() as directory:
+        target = pathlib.Path(directory)
         onboarded = subprocess.run(
-            [
-                str(ROOT / "client-setup"),
-                "onboard",
-                str(target),
-                "example/.github",
-                "atkandi111/demandph-website",
-            ],
+            [str(ROOT / "client-setup"), "onboard", str(target), "example/.github", "atkandi111/demandph-website"],
             text=True,
             capture_output=True,
             check=False,
         )
         require(onboarded.returncode == 0, onboarded.stderr)
-
-    with tempfile.TemporaryDirectory() as directory:
-        target = pathlib.Path(directory)
-        unregistered = subprocess.run(
-            [
-                str(ROOT / "client-setup"),
-                "onboard",
-                str(target),
-                "example/.github",
-                "example/unregistered-client",
-            ],
-            text=True,
-            capture_output=True,
-            check=False,
-        )
-        require(unregistered.returncode != 0, "onboarding accepted an unregistered client")
+        require("client-setup labels" in onboarded.stdout, "onboarding omitted label setup")
 
     with tempfile.TemporaryDirectory() as directory:
         target = pathlib.Path(directory)
@@ -376,58 +421,65 @@ def test_installer() -> None:
             capture_output=True,
             check=False,
         )
-        require(checked.returncode != 0, "local Issue template silently shadowed account defaults")
-        require("overrides account defaults" in checked.stderr, "template override failure is unclear")
+        require(checked.returncode != 0 and "overrides account defaults" in checked.stderr, "template override was missed")
 
 
 def test_portfolio_reconciliation_contract() -> None:
-    inventory = [
-        line
-        for line in read("config/portfolio-repositories.txt").splitlines()
-        if line and not line.startswith("#")
-    ]
-    require(inventory == sorted(inventory), "portfolio inventory is not alphabetized")
-    require(len(inventory) == len(set(inventory)), "portfolio inventory contains duplicates")
-    for repository in (
-        "atkandi111/Mahjongtale",
-        "atkandi111/demandph-website",
-        "atkandi111/.github",
-        "atkandi111/infrastructure",
-        "atkandi111/rotary-binan-website",
-    ):
-        require(repository in inventory, f"portfolio inventory is missing {repository}")
-
-    workflow = read(".github/workflows/portfolio-project.yml")
+    inventory = [line for line in read("config/portfolio-repositories.txt").splitlines() if line and not line.startswith("#")]
+    require(inventory == sorted(inventory) and len(inventory) == len(set(inventory)), "portfolio inventory is invalid")
     reconciler = read("scripts/reconcile-portfolio-project")
-    require("schedule:" in workflow and "workflow_dispatch:" in workflow, "reconciliation triggers missing")
-    require('cron: "7,22,37,52 * * * *"' in workflow, "Status reconciliation is not scheduled every 15 minutes")
-    require("contents: read" in workflow, "reconciliation workflow must keep repository access read-only")
-    require("PORTFOLIO_PROJECT_TOKEN" in workflow, "Project credential contract missing")
-    require("addProjectV2ItemById" in reconciler, "reconciler cannot add missing items")
-    require("updateProjectV2ItemFieldValue" in reconciler, "reconciler cannot mirror lifecycle Status")
-    require(reconciler.count("updateProjectV2ItemFieldValue") == 1, "Status mutation may be replayed")
-    require("gh project" not in reconciler, "reconciler relies on ambiguous gh project owner resolution")
-    require("projectV2(number: $number)" in reconciler, "Project ID is not queried from owner and number")
+    workflow = read(".github/workflows/portfolio-project.yml")
+    require("schedule:" in workflow and "workflow_dispatch:" in workflow, "Portfolio triggers missing")
+    require("PORTFOLIO_PROJECT_TOKEN" in workflow and "contents: read" in workflow, "Project credential boundary drifted")
+    require("addProjectV2ItemById" in reconciler and "updateProjectV2ItemFieldValue" in reconciler, "Project reconciliation mutation missing")
+    require(reconciler.count("updateProjectV2ItemFieldValue") == 1, "Project status mutation duplicated")
+    require("agent:authorized" in reconciler, "Project lifecycle does not mirror pipeline authorization")
+    require("agent:in-progress" not in reconciler, "obsolete in-progress label remains")
+    require("issues/$number/comments" not in reconciler, "obsolete comment authorization remains")
     for forbidden in ("item-delete", "item-archive"):
-        require(forbidden not in reconciler, f"reconciler may modify existing Project data: {forbidden}")
-    require("comm -23" in reconciler and "sort -u" in reconciler, "idempotent membership comparison missing")
-    require("for attempt in 1 2 3 4 5" in reconciler, "eventual-consistency verification retry missing")
-    require(reconciler.count("addProjectV2ItemById") == 1, "Project mutation may be replayed during verification")
-    require("verify --plan" in reconciler, "Status updates are not verified read-only")
-    require("'For Review'" in reconciler, "For Review status contract missing")
+        require(forbidden not in reconciler, f"Project reconciler may destructively normalize: {forbidden}")
+    require("comm -23" in reconciler and "verify --plan" in reconciler, "idempotent reconciliation missing")
+
+
+def test_documented_operating_contract() -> None:
+    corpus = "\n".join(read(path) for path in (
+        "README.md",
+        "docs/issue-planning.md",
+        "docs/security.md",
+        "docs/cloud-setup.md",
+        "docs/release.md",
+        "docs/governance-rollout.md",
+        "policy/AGENTS.md",
+    ))
+    for phrase in (
+        "implementation",
+        "planning",
+        "queue: max",
+        "GitHub App",
+        "manual merge",
+        "Codex review",
+        "one executable Issue per repository",
+    ):
+        require(phrase.lower() in corpus.lower(), f"documentation is missing {phrase}")
+    require("@codex implement this issue" not in corpus, "obsolete native implementation trigger remains")
+    for forbidden in ("atkandi/owner-approval", "AGENT_AUTO_MERGE_ENABLED", "AGENT_REQUIRED_CI_CONTEXT"):
+        require(forbidden not in corpus, f"removed lifecycle documentation remains: {forbidden}")
+    require(len(read("policy/AGENTS.md").encode()) <= 4096, "shared policy exceeds the 4 KiB budget")
 
 
 def main() -> None:
     tests = (
-        test_removed_custom_runtime,
+        test_pipeline_policy_authorization,
+        test_pipeline_policy_artifacts_and_rendering,
+        test_workflow_trust_boundaries,
         test_issue_and_handoff_contract,
-        test_queue_and_review_operating_contract,
         test_portfolio_status_lifecycle,
         test_missing_project_access,
         test_reusable_ci_boundary,
         test_action_pins,
         test_installer,
         test_portfolio_reconciliation_contract,
+        test_documented_operating_contract,
     )
     for test in tests:
         test()

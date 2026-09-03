@@ -1,22 +1,28 @@
 # Platform release and rollback
 
-Client callers track `atkandi111/.github@main`. A merge to `main` is therefore a portfolio workflow release; review and test it accordingly.
+Client callers track `atkandi111/.github@main`, so merging a central workflow change is a portfolio release.
 
-## Release checks
+## Release
 
-1. Run `./tests/run.sh`.
-2. Use `./client-setup install-canary TARGET OWNER/REPOSITORY COMMIT_SHA` in a disposable directory or low-risk repository to verify exact candidate references.
-3. For behavior that depends on Codex Cloud, account-default templates, native Create PR/Update PR, or GitHub comments, run the canaries in `docs/cloud-setup.md`.
-4. On the published draft PR, verify its full head SHA, run deterministic CI, and request the separate native `@codex review` pass.
-5. Merge the platform pull request only after the candidate checks pass and no consequential P0/P1 finding remains.
-6. Confirm one client pull request uses the new `main` workflow successfully.
+1. Run `./tests/run.sh`, action linting, and `git diff --check`.
+2. Review workflow permissions, Action pins, secret references, event filters, protected paths, and shell boundaries.
+3. Use `./client-setup install-canary TARGET atkandi111/.github COMMIT_SHA` only as a local candidate-pin check; it does not create a live Issue or PR.
+4. Keep `AGENT_PIPELINE_ENABLED=false` while merging the central release and each reviewed client caller PR.
+5. Configure the three labels, dedicated OpenAI key, publisher App installation/key, and repository protected paths.
+6. Enable repositories individually and observe the first real low-risk Implementation Issue before using the queue broadly.
+
+Normal PR CI and manual owner merge remain authoritative. Native Codex review is optional and advisory.
+
+## Central protection
+
+The public account `.github` repository should require `Platform tests`, `Platform governance / Validate naming`, strict up-to-date checks, and resolved conversations. The Issue pipeline must never weaken repository protection.
 
 ## Rollback
 
-Revert the platform commit on `main` to restore the prior reviewed workflow and account-default template source. Existing client callers use the restored reusable workflow and inherited templates on their next run or new record. A repository with an intentional local template remains responsible for that override.
+1. Set `AGENT_PIPELINE_ENABLED=false` in affected repositories. Existing PRs remain ordinary reviewable PRs.
+2. Revert the central release through a reviewed PR, or revert one client caller if only that repository is affected.
+3. Revoke the publisher App key or uninstall the App where publication authority may be compromised. Revoke the OpenAI key independently if implementation usage is suspect.
 
-If Codex Cloud behavior is unreliable, stop posting the exact owner trigger comment while continuing to publish and refine implementation contracts or develop manually. There is no repository secret, custom queue service, or publisher to disable.
+Do not delete Issue branches, PRs, Project items, or human-owned Project fields during rollback. Do not restore an AI classifier, AI merge decision, or direct Codex publishing authority.
 
-## Dependency policy
-
-Pin third-party Actions to reviewed immutable commit SHAs. Reusable client callers intentionally use `atkandi111/.github@main` as the reviewed portfolio release channel.
+Third-party Actions stay pinned to immutable commit SHAs. The publisher App is required; there is no PAT or `GITHUB_TOKEN` publication fallback.

@@ -5,11 +5,14 @@ repo_root=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
 cd "$repo_root"
 
 ruby -e 'require "yaml"; ARGV.each { |file| YAML.parse_file(file); puts "yaml ok: #{file}" }' \
+  .github/workflows/agent.yml \
   .github/workflows/ci.yml \
   .github/workflows/governance.yml \
+  .github/workflows/platform-agent.yml \
   .github/workflows/platform-checks.yml \
   .github/workflows/platform-governance.yml \
   .github/workflows/portfolio-project.yml \
+  templates/client/.github/workflows/agent.yml \
   templates/client/.github/workflows/ci.yml \
   templates/client/.github/workflows/governance.yml \
   .github/ISSUE_TEMPLATE/01-implementation.yml \
