@@ -41,15 +41,15 @@ Keep unresolved product decisions in Planning / deferred. Prefer outcomes and co
 4. Do not add `@codex implement`. Native Cloud execution is a separate path and would risk duplicate work.
 5. Issue text, comments, edited text, Project fields, and labels added after creation cannot authorize execution. Existing open Issues are not bulk-triggered.
 6. The repository queue runs one Issue at a time, retains up to 100 waiting runs through `queue: max`, and allows different repositories to run in parallel. Waiting-time FIFO is sufficient; Issue-number order is not guaranteed.
-7. The pipeline publishes one draft PR, completes the Merge Brief, runs deterministic CI, and makes the initial revision ready for native Codex and owner review.
-8. Owner-requested changes update the same PR. CI reruns and old approval cannot apply to the new SHA. A fresh Codex review is optional because it is advisory.
-9. Owner approval of the current revision is the merge authorization. GitHub auto-merges only where enforceable repository protection is available; otherwise the owner merges manually.
+7. The pipeline publishes one ready PR and completes its Merge Brief. Normal PR CI and optional native Codex review follow.
+8. An owner changes-requested review for the exact current SHA updates the same PR using its summary and inline comments.
+9. When satisfied with the current revision, the owner manually clicks **Merge**.
 
 ## Dependencies and overlap
 
 - The automated queue serializes all work in a repository, so it avoids simultaneous Issue-generated PRs there. Different repositories remain independent.
 - A dependent Issue should still be created only after its predecessor is merged and `main` CI is green, because queue order is not dependency inference.
 - If a human product branch overlaps the queue, pause new implementation by setting `AGENT_PIPELINE_ENABLED=false`, finish or coordinate the existing branch, then re-enable it.
-- A canceled run beyond GitHub's 100-pending capacity is unexecuted work. It remains visible as a canceled run and requires explicit owner recovery; it must never be treated as completed.
+- A canceled run beyond GitHub's 100-pending capacity is unexecuted work. It remains visible as a canceled run and requires the owner-only manual retry; it must never be treated as completed.
 
 The Portfolio Project is status and priority only. Moving an item does not queue, revise, approve, merge, or deploy anything.

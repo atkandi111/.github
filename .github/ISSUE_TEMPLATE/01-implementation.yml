@@ -10,7 +10,7 @@ body:
         Choose one cohesive, reviewable repository outcome that should normally produce one branch and one pull request. Combine tightly coupled same-repository details; split independent or cross-repository outcomes.
 
         Planning guide: https://github.com/atkandi111/.github/blob/main/docs/issue-planning.md
-        Do not add an `@codex implement` mention: native Cloud execution would duplicate the Actions-hosted implementation run. The pipeline publishes one draft PR, runs deterministic CI, completes its Merge Brief, and marks it ready for owner review.
+        Do not add an `@codex implement` mention: native Cloud execution would duplicate the Actions-hosted implementation run. The pipeline publishes one ready pull request with its Merge Brief; normal pull-request CI and optional Codex review follow.
   - type: textarea
     id: outcome
     attributes:

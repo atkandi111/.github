@@ -17,7 +17,7 @@ permissions:
   actions: read
   contents: read
   issues: write
-  pull-requests: write
+  pull-requests: read
 
 jobs:
   run:
@@ -29,12 +29,8 @@ jobs:
       base_ref: ${{ github.event.repository.default_branch }}
       platform_ref: main
       pipeline_enabled: ${{ vars.AGENT_PIPELINE_ENABLED || 'false' }}
-      auto_merge_enabled: ${{ vars.AGENT_AUTO_MERGE_ENABLED || 'false' }}
-      required_ci_context: Platform tests
       publisher_client_id: ${{ vars.PUBLISHER_APP_CLIENT_ID }}
       protected_paths: ${{ vars.AGENT_PROTECTED_PATHS }}
-      test_command: ./tests/run.sh
-      max_attempts: ${{ fromJSON(vars.AGENT_MAX_ATTEMPTS || '2') }}
     secrets:
       openai_api_key: ${{ secrets.OPENAI_API_KEY }}
       publisher_private_key: ${{ secrets.PUBLISHER_APP_PRIVATE_KEY }}

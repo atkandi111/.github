@@ -10,7 +10,6 @@ client_files=(
   .github/workflows/agent.yml
   .github/workflows/ci.yml
   .github/workflows/governance.yml
-  .github/workflows/owner-approval.yml
 )
 
 account_default_overrides=(
@@ -70,8 +69,6 @@ configure_labels() {
     --description 'Planning, deferred, backlogged, or coordination-only work' --force
   gh label create agent:authorized --repo "$repository" --color 0e8a16 \
     --description 'Trusted receipt from the owner-authored Issue opened event' --force
-  gh label create agent:in-progress --repo "$repository" --color fbca04 \
-    --description 'Implementation, publication, CI, or revision is active or blocked' --force
 }
 
 absolute_directory() {
@@ -135,7 +132,7 @@ install_client() {
     'Next:' \
     '1. Replace template guidance and tailor CI commands.' \
     "2. Run: $platform_root/client-setup $check_command \"$target\"" \
-    '3. Configure the repository Codex Cloud environment from docs/cloud-setup.md.'
+    '3. Configure the Issue pipeline from docs/cloud-setup.md.'
 }
 
 check_client() {
@@ -162,8 +159,8 @@ check_client() {
     echo "workflow callers do not use the expected release reference: $expected" >&2
     failed=true
   fi
-  if ! grep -Eq "/\.github/\.github/workflows/(agent|owner-approval)\.yml${expected}" \
-      "$target/.github/workflows/agent.yml" "$target/.github/workflows/owner-approval.yml"; then
+  if ! grep -Eq "/\.github/\.github/workflows/agent\.yml${expected}" \
+      "$target/.github/workflows/agent.yml"; then
     echo "agent workflow callers do not use the expected release reference: $expected" >&2
     failed=true
   fi

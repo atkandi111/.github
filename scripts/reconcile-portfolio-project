@@ -80,7 +80,6 @@ status_items_query='query($login: String!, $number: Int!, $endCursor: String) {
               isDraft
               reviewDecision
               mergedAt
-              labels(first: 20) { nodes { name } }
               repository { nameWithOwner owner { login } }
             }
           }
@@ -99,7 +98,6 @@ status_items_query='query($login: String!, $number: Int!, $endCursor: String) {
                     isDraft
                     reviewDecision
                     mergedAt
-                    labels(first: 20) { nodes { name } }
                   }
                 }
               }
@@ -170,7 +168,6 @@ list_project_status_items() {
           merged_at: (.content.mergedAt // null),
           labels: ([.content.labels.nodes[].name]),
           execution_started: ([.content.labels.nodes[].name] | index("agent:authorized") != null),
-          execution_in_progress: ([.content.labels.nodes[].name] | index("agent:in-progress") != null),
           current_status: ([
             .fieldValues.nodes[]
             | select(.__typename == "ProjectV2ItemFieldSingleSelectValue" and .field.name == "Status")
@@ -184,8 +181,7 @@ list_project_status_items() {
                 state: .state,
                 is_draft: .isDraft,
                 review_decision: (.reviewDecision // null),
-                merged_at: (.mergedAt // null),
-                execution_in_progress: ([.labels.nodes[].name] | index("agent:in-progress") != null)
+                merged_at: (.mergedAt // null)
               }
           ])
         }' > "$destination"

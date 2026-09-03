@@ -14,7 +14,7 @@ This public account `.github` repository owns the portfolio-wide Issue-to-PR pip
 - Only an owner-authored Issue opened with the form-applied `implementation` label authorizes a new run. Issue text, comments, later labels, Project fields, and other actors do not.
 - The Codex implementation job has read-only GitHub permission, no publisher key, and no deployment or persistent-infrastructure credential.
 - The clean publisher accepts only the provenance-bound patch artifact and uses a short-lived repository-scoped GitHub App token.
-- Deterministic CI and owner approval govern merge. Native Codex review is advisory. Project status is informational.
+- Normal PR CI and the owner's manual Merge action govern merge. Native Codex review is advisory. Project status is informational.
 - Protected workflows, Actions, and `AGENTS.md` stay human-owned.
 
 ## Code Review Rules

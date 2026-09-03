@@ -1,39 +1,32 @@
 # Transition to automatic Issue-to-PR publication
 
-The portfolio previously used native Codex Cloud implementation followed by a manual **Create PR** handoff. The transition replaces that middle handoff with a small Actions-hosted implementation and clean publisher. Existing product work is preserved.
+The prior flow used native Codex Cloud implementation followed by a manual **Create PR** handoff. The new flow uses an Actions-hosted Codex job plus a clean non-AI publisher so completed work reliably reaches one ready PR.
 
-## Existing branches and pull requests
+## Preserve existing work
 
-- Continue existing product branches and PRs normally. Do not regenerate, rebase, or close them merely for this transition.
-- The new pipeline reacts only to owner-created Implementation Issues opened after its caller is enabled. It does not bulk-process existing PRs.
-- Existing native Cloud commits that were never published remain separate recovery work; the pipeline does not guess or recreate them.
-
-## Existing Issues
-
-- Existing open Issues are not automatically authorized because their original `opened` event did not carry the new trusted receipt path.
-- Keep backlog and planning parents unchanged.
-- When an existing Issue is ready, either implement it manually or replace it with a newly reviewed Implementation Issue that links the original. Do not authorize it by adding `implementation` later.
-- Do not post native `@codex implement` comments after adopting this pipeline; doing so could start duplicate work.
+- Continue existing product branches and PRs normally. Do not regenerate, rebase, or close them for this transition.
+- The pipeline reacts only to owner-created Implementation Issues opened after its caller is enabled. It does not bulk-process existing Issues or PRs.
+- Existing unpublished native Cloud work remains separate recovery work; the pipeline does not guess or recreate it.
+- Keep backlog and planning parents unchanged. To run an existing Issue, implement it manually or replace it with a newly reviewed Implementation Issue that links the original. Adding a label later does not authorize it.
+- Do not also post native `@codex implement` comments after adopting this pipeline.
 
 ## New Issues
 
-- Owner-created **Implementation issue**: queues automatically from its initial `implementation` label.
+- Owner-created **Implementation issue**: queues from its initial `implementation` label.
 - **Planning / deferred issue**: remains Todo and non-executable from its initial `planning` label.
-- One executable Issue stays repository-scoped and normally produces one PR. Cross-repository outcomes use one Planning parent and one Implementation subissue per repository.
+- One executable Issue stays repository-scoped and normally produces one PR. Cross-repository outcomes use a Planning parent and one Implementation subissue per repository.
 
 ## Rollout order
 
-1. Merge the account `.github` implementation after its tests and owner review.
-2. Create the four required labels in every in-scope repository.
-3. Create/install the narrowly scoped publisher GitHub App and add the repository-local App Client ID/private-key settings.
-4. Add a dedicated non-production OpenAI project key to each repository.
-5. Keep both pipeline variables false while each client merges its thin agent and owner-approval callers.
-6. Enable automatic native Codex review in each connected repository.
-7. Protect `main` and enable auto-merge only where GitHub can enforce the full gate. Keep private unsupported repositories manual-merge.
-8. Enable the D'EMAND pipeline first and observe one real low-risk Implementation Issue. Then enable the remaining repositories one at a time.
+1. Merge the account `.github` implementation after tests and owner review.
+2. Ensure the three required labels exist in every repository.
+3. Create/install the narrowly scoped publisher App and add the App and OpenAI settings while `AGENT_PIPELINE_ENABLED=false`.
+4. Merge each repository's thin caller PR separately without disturbing active product branches.
+5. Optionally enable native Codex review.
+6. Enable D'EMAND first and observe one real low-risk Implementation Issue, then enable remaining repositories individually.
 
-The infrastructure repository may later permit credential-free Terraform format/validate/test in its caller. Persistent plan/apply remains outside this pipeline.
+Infrastructure may later permit credential-free Terraform checks. Persistent plan/apply remains outside this pipeline.
 
 ## Safe stop
 
-Set `AGENT_PIPELINE_ENABLED=false` to stop new implementation. Queued runs that reach authorization will no-op. Published PRs stay intact for ordinary human review. Set `AGENT_AUTO_MERGE_ENABLED=false` to prevent future PRs from being armed. Native auto-merge is persistent GitHub state, so also disable auto-merge on every already-armed PR in the GitHub UI or with `gh pr merge PR_NUMBER --disable-auto --repo OWNER/REPOSITORY`.
+Set `AGENT_PIPELINE_ENABLED=false`. Queued runs that reach authorization will no-op; already published PRs remain ordinary PRs for manual review and merge.

@@ -18,7 +18,6 @@ from typing import Any, Iterable
 IMPLEMENTATION_LABEL = "implementation"
 PLANNING_LABEL = "planning"
 AUTHORIZATION_LABEL = "agent:authorized"
-IN_PROGRESS_LABEL = "agent:in-progress"
 RECEIPT_ACTOR = "github-actions[bot]"
 BRANCH_PATTERN = re.compile(r"^issue/([1-9][0-9]*)$")
 FULL_SHA = re.compile(r"^[0-9a-f]{40}$")
@@ -106,6 +105,8 @@ def authorize_event(
             or not isinstance(pull_request, dict)
             or str(review.get("state", "")).lower() != "changes_requested"
             or _login(review.get("user")) != owner
+            or not isinstance(review.get("id"), int)
+            or review.get("id") < 1
             or not FULL_SHA.fullmatch(str(review.get("commit_id") or ""))
             or review.get("commit_id") != event_head_sha
             or pull_request.get("state") != "open"
@@ -134,7 +135,7 @@ def authorize_event(
             return denied
         return {
             "authorized": True,
-            "mode": "recovery",
+            "mode": "retry",
             "issue_number": requested_issue_number,
             "pr_number": 0,
             "branch": f"issue/{requested_issue_number}",
@@ -288,7 +289,7 @@ def render_merge_brief(
     head_sha: str,
     ci_state: str,
     review_state: str,
-    auto_merge_note: str,
+    merge_note: str,
 ) -> str:
     validate_result(result)
     if not FULL_SHA.fullmatch(head_sha):
@@ -344,14 +345,23 @@ Closes #{number}
 
 ### Merge authorization
 
-- {_clean(auto_merge_note)}
+- {_clean(merge_note)}
 """
 
 
 def build_prompt(issue: dict[str, Any], payload: dict[str, Any], mode: str) -> str:
     review_body = ""
+    inline_feedback = ""
     if mode == "revision" and isinstance(payload.get("review"), dict):
         review_body = str(payload["review"].get("body") or "")
+        comments = list(_flatten_pages(payload.get("review_comments")))[:100]
+        lines = []
+        for comment in comments:
+            path = str(comment.get("path") or "file")
+            line = comment.get("line") or comment.get("original_line") or "?"
+            body = str(comment.get("body") or "")
+            lines.append(f"- {path}:{line}: {body}")
+        inline_feedback = "\n".join(lines)
     return f"""Implement only the authorized repository Issue below. Read PROJECT.md and every applicable AGENTS.md before editing. Make the smallest coherent change that satisfies the acceptance criteria.
 
 Update relevant documentation in the same change whenever durable behavior, architecture, operations, or developer workflow changes. In the structured result, summarize the documentation updated or briefly explain why none was needed; the publisher will keep this detail out of the Merge Brief unless it belongs in delivered scope.
@@ -370,6 +380,10 @@ Issue #{issue.get('number')}: {issue.get('title') or ''}
 <untrusted_owner_revision_request>
 {review_body}
 </untrusted_owner_revision_request>
+
+<untrusted_inline_review_comments>
+{inline_feedback}
+</untrusted_inline_review_comments>
 """
 
 
@@ -425,7 +439,7 @@ def main() -> int:
     render.add_argument("--head-sha", required=True)
     render.add_argument("--ci-state", required=True)
     render.add_argument("--review-state", required=True)
-    render.add_argument("--auto-merge-note", required=True)
+    render.add_argument("--merge-note", required=True)
     render.add_argument("--output", required=True, type=Path)
 
     args = parser.parse_args()
@@ -478,7 +492,7 @@ def main() -> int:
                     head_sha=args.head_sha,
                     ci_state=args.ci_state,
                     review_state=args.review_state,
-                    auto_merge_note=args.auto_merge_note,
+                    merge_note=args.merge_note,
                 ),
             )
         return 0

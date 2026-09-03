@@ -18,11 +18,7 @@ def desired_status(item: dict[str, Any]) -> str | None:
         if state == "MERGED" or item.get("merged_at"):
             return "Done"
         if state == "OPEN":
-            if (
-                item.get("execution_in_progress") is True
-                or item.get("is_draft")
-                or item.get("review_decision") == "CHANGES_REQUESTED"
-            ):
+            if item.get("is_draft") or item.get("review_decision") == "CHANGES_REQUESTED":
                 return "In Progress"
             return "For Review"
         if state == "CLOSED":
@@ -45,12 +41,7 @@ def desired_status(item: dict[str, Any]) -> str | None:
 
     open_prs = [pr for pr in linked if pr.get("state") == "OPEN"]
     if open_prs:
-        if item.get("execution_in_progress") is True or any(
-            pr.get("execution_in_progress")
-            or pr.get("is_draft")
-            or pr.get("review_decision") == "CHANGES_REQUESTED"
-            for pr in open_prs
-        ):
+        if any(pr.get("is_draft") or pr.get("review_decision") == "CHANGES_REQUESTED" for pr in open_prs):
             return "In Progress"
         return "For Review"
 

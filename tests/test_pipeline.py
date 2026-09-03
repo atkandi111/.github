@@ -55,6 +55,7 @@ def review_event(*, owner: str = "atkandi111", reviewer: str | None = None, stat
         "sender": {"login": reviewer or owner},
         "repository": {"full_name": f"{owner}/example"},
         "review": {
+            "id": 200,
             "state": state,
             "user": {"login": reviewer or owner},
             "body": "Please fix this.",
@@ -115,6 +116,7 @@ def test_pipeline_policy_authorization() -> None:
     for payload in (
         review_event(reviewer="someone-else"),
         review_event(state="approved"),
+        {**review_event(), "review": {**review_event()["review"], "id": None}},
         {**review_event(), "review": {**review_event()["review"], "commit_id": "d" * 40}},
         {**review_event(), "pull_request": {**review_event()["pull_request"], "head": {"ref": "feature/x", "repo": {"full_name": "atkandi111/example"}}}},
         {**review_event(), "pull_request": {**review_event()["pull_request"], "head": {"ref": "issue/12", "repo": {"full_name": "someone/fork"}}}},
@@ -125,9 +127,10 @@ def test_pipeline_policy_authorization() -> None:
         )
 
     manual = {"sender": {"login": "atkandi111"}, "repository": {"full_name": "atkandi111/example"}}
-    require(policy.authorize_event(manual, "manual", "atkandi111", "main", 12)["authorized"], "owner recovery rejected")
+    retry = policy.authorize_event(manual, "manual", "atkandi111", "main", 12)
+    require(retry["authorized"] and retry["mode"] == "retry", "owner retry rejected")
     manual["sender"]["login"] = "someone-else"
-    require(not policy.authorize_event(manual, "manual", "atkandi111", "main", 12)["authorized"], "foreign recovery accepted")
+    require(not policy.authorize_event(manual, "manual", "atkandi111", "main", 12)["authorized"], "foreign retry accepted")
 
 
 def test_pipeline_policy_artifacts_and_rendering() -> None:
@@ -206,7 +209,7 @@ def test_pipeline_policy_artifacts_and_rendering() -> None:
         head_sha="b" * 40,
         ci_state="Passed",
         review_state="Automatic review starts when ready.",
-        auto_merge_note="Owner approval remains required.",
+        merge_note="The owner merges manually.",
     )
     require("<!-- hidden -->" not in brief and "&lt;!-- hidden --&gt;" in brief, "Merge Brief did not neutralize HTML")
     require("Closes #99" not in brief and "Fixes https://" not in brief and "@person" not in brief, "model prose retained GitHub side effects")
@@ -215,46 +218,40 @@ def test_pipeline_policy_artifacts_and_rendering() -> None:
         require(f"### {heading}" in brief, f"Merge Brief is missing {heading}")
     require("Closes #12" in brief and "b" * 40 in brief, "Merge Brief linkage/provenance missing")
 
+    revision = review_event()
+    revision["review_comments"] = [[{"path": "src/app.ts", "line": 9, "body": "Handle the empty value."}]]
+    prompt = policy.build_prompt(issue, revision, "revision")
+    require("Please fix this." in prompt, "revision summary missing from prompt")
+    require("src/app.ts:9: Handle the empty value." in prompt, "inline review feedback missing from prompt")
+
 
 def test_workflow_trust_boundaries() -> None:
     agent = read(".github/workflows/agent.yml")
-    approval = read(".github/workflows/owner-approval.yml")
     caller = read("templates/client/.github/workflows/agent.yml")
-    approval_caller = read("templates/client/.github/workflows/owner-approval.yml")
 
     require("queue: max" in agent and "cancel-in-progress: false" in agent, "no-drop queue configuration missing")
     require("atkandi-issue-pipeline-${{ github.repository }}" in agent, "queue is not repository-scoped")
-    require("Validate immutable authorization" in agent and "agent:authorized" in agent, "trusted intake receipt missing")
+    require("Validate authorization" in agent and "agent:authorized" in agent, "trusted intake receipt missing")
     require("Isolated Codex implementation" in agent, "isolated implementation job missing")
     implement_block = agent.split("  implement:", 1)[1].split("  publish:", 1)[0]
     require("contents: read" in implement_block and "contents: write" not in implement_block, "implementation can write GitHub contents")
     require("pull-requests: write" not in implement_block and "publisher_private_key" not in implement_block, "implementation can publish")
     require("permission-profile: \":workspace\"" in implement_block and "safety-strategy: drop-sudo" in implement_block, "Codex sandbox boundary missing")
     require("Clean deterministic publisher" in agent and "apply --check" in agent, "clean publisher validation missing")
-    require("uses: ./.github/workflows/ci.yml" in agent, "pipeline verifier does not use the agent workflow\'s exact platform revision")
+    require("reviews/$review_id/comments" in agent and "review_comments" in agent, "revision does not include inline review feedback")
     require('gsub("@"; "&#64;")' in agent and 'gsub("#"; "&#35;")' in agent, "untrusted handoff prose can trigger GitHub side effects")
     require("actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1" in agent, "publisher App token is not pinned")
-    require("permission-administration: read" in agent and "permission-contents: write" in agent, "publisher App permissions drifted")
-    require("gh pr create" in agent and "--draft" in agent, "publisher does not create a draft PR")
-    merge_lines = [line for line in agent.splitlines() if "gh pr merge" in line]
-    require(len(merge_lines) == 1 and "--auto" in merge_lines[0] and "--match-head-commit" in merge_lines[0], "workflow can directly or stale-merge")
-    require("required_approving_review_count >= 1" in agent, "auto-merge does not require review protection")
-    require("dismiss_stale_reviews == true" in agent, "stale approvals are not rejected")
-    require("required_conversation_resolution.enabled == true" in agent, "unresolved conversations can merge")
-    require("atkandi/owner-approval" in agent, "owner approval status is not required")
-    require("index($required_ci_context)" in agent and "select(. != \"atkandi/owner-approval\")" not in agent, "auto-merge accepts an unrelated required status instead of exact deterministic CI")
-    require("review.commit_id" in approval and "review_sha" in approval, "owner approval is not head-bound")
-    require("pull_request.draft" in approval and '[[ "$draft" == false ]]' in approval, "draft approval can satisfy merge status")
-    require("$GITHUB_REPOSITORY_OWNER" in approval and "statuses/$review_sha" in approval, "owner approval identity/status missing")
+    require("permission-contents: write" in agent and "permission-administration" not in agent, "publisher App permissions drifted")
+    require("gh pr create" in agent and "--draft" not in agent, "publisher does not create a ready PR")
+    for forbidden in ("gh pr merge", "owner-approval", "auto_merge", "required_ci_context", "Published deterministic CI", "Ready for owner review"):
+        require(forbidden not in agent, f"removed lifecycle machinery remains: {forbidden}")
     require("issues:" in caller and "types: [opened]" in caller, "Issue-opened caller missing")
     require("pull_request_review:" in caller and "changes_requested" in caller, "revision caller missing")
     require("PUBLISHER_APP_PRIVATE_KEY" in caller and "OPENAI_API_KEY" in caller, "caller credentials missing")
     require("PUBLISHER_APP_CLIENT_ID is not configured" in agent, "missing publisher identity does not fail closed")
     require("token: ${{ steps.publisher_token.outputs.token }}" in agent, "publication does not use the scoped App token")
-    require("AGENT_PIPELINE_ENABLED" in caller and "AGENT_AUTO_MERGE_ENABLED" in caller, "kill switches missing")
-    require("AGENT_REQUIRED_CI_CONTEXT" in caller, "client caller does not identify its exact deterministic CI context")
-    require("live_auto_merge" in agent and "steps.switches.outputs.auto_merge_enabled" in agent, "auto-merge kill switch is not rechecked live")
-    require("owner-approval.yml@main" in approval_caller, "owner approval caller is not centralized")
+    require("AGENT_PIPELINE_ENABLED" in caller, "pipeline kill switch missing")
+    require("AGENT_AUTO_MERGE_ENABLED" not in caller and "AGENT_REQUIRED_CI_CONTEXT" not in caller, "removed merge settings remain")
     require("@codex implement" not in agent and "@codex review" not in agent, "workflow triggers native Codex text commands")
 
 
@@ -282,17 +279,15 @@ def test_portfolio_status_lifecycle() -> None:
         "state": "OPEN",
         "state_reason": None,
         "execution_started": False,
-        "execution_in_progress": False,
         "linked_pull_requests": [],
         "current_status": "Todo",
     }
     require(status.desired_status(base_issue) == "Todo", "unstarted Issue not Todo")
     require(status.desired_status({**base_issue, "execution_started": True}) == "In Progress", "claimed Issue not active")
-    draft = {"state": "OPEN", "is_draft": True, "review_decision": None, "execution_in_progress": False}
+    draft = {"state": "OPEN", "is_draft": True, "review_decision": None}
     ready = {**draft, "is_draft": False}
     require(status.desired_status({**base_issue, "linked_pull_requests": [draft]}) == "In Progress", "draft work not active")
     require(status.desired_status({**base_issue, "linked_pull_requests": [ready]}) == "For Review", "ready work not reviewable")
-    require(status.desired_status({**base_issue, "execution_in_progress": True, "linked_pull_requests": [ready]}) == "In Progress", "revision not active")
     require(status.desired_status({**base_issue, "linked_pull_requests": [{**ready, "review_decision": "CHANGES_REQUESTED"}]}) == "In Progress", "changes request not active")
     require(status.desired_status({**base_issue, "linked_pull_requests": [{"state": "MERGED", "merged_at": "now"}]}) == "Done", "merge not Done")
     require(status.desired_status({**base_issue, "state": "CLOSED", "state_reason": "COMPLETED"}) == "Done", "completed Issue not Done")
@@ -305,12 +300,11 @@ def test_portfolio_status_lifecycle() -> None:
         "state": "OPEN",
         "is_draft": False,
         "review_decision": None,
-        "execution_in_progress": False,
         "merged_at": None,
         "current_status": "Todo",
     }
     require(status.desired_status(pr) == "For Review", "ready PR not For Review")
-    require(status.desired_status({**pr, "execution_in_progress": True}) == "In Progress", "revising PR not active")
+    require(status.desired_status({**pr, "review_decision": "CHANGES_REQUESTED"}) == "In Progress", "revising PR not active")
     require(status.desired_status({**pr, "state": "MERGED"}) == "Done", "merged PR not Done")
     update = {**pr, "current_status": "Todo"}
     planned = status.plan_updates([update, update])
@@ -372,7 +366,6 @@ def test_installer() -> None:
         require(installed.returncode == 0, installed.stderr)
         for relative in (
             ".github/workflows/agent.yml",
-            ".github/workflows/owner-approval.yml",
             ".github/workflows/ci.yml",
             ".github/workflows/governance.yml",
         ):
@@ -440,7 +433,8 @@ def test_portfolio_reconciliation_contract() -> None:
     require("PORTFOLIO_PROJECT_TOKEN" in workflow and "contents: read" in workflow, "Project credential boundary drifted")
     require("addProjectV2ItemById" in reconciler and "updateProjectV2ItemFieldValue" in reconciler, "Project reconciliation mutation missing")
     require(reconciler.count("updateProjectV2ItemFieldValue") == 1, "Project status mutation duplicated")
-    require("agent:authorized" in reconciler and "agent:in-progress" in reconciler, "Project lifecycle does not mirror pipeline state")
+    require("agent:authorized" in reconciler, "Project lifecycle does not mirror pipeline authorization")
+    require("agent:in-progress" not in reconciler, "obsolete in-progress label remains")
     require("issues/$number/comments" not in reconciler, "obsolete comment authorization remains")
     for forbidden in ("item-delete", "item-archive"):
         require(forbidden not in reconciler, f"Project reconciler may destructively normalize: {forbidden}")
@@ -462,14 +456,14 @@ def test_documented_operating_contract() -> None:
         "planning",
         "queue: max",
         "GitHub App",
-        "owner approval",
-        "automatic Codex review",
         "manual merge",
+        "Codex review",
         "one executable Issue per repository",
     ):
         require(phrase.lower() in corpus.lower(), f"documentation is missing {phrase}")
     require("@codex implement this issue" not in corpus, "obsolete native implementation trigger remains")
-    require("--disable-auto" in corpus, "rollback omits already-armed native auto-merge state")
+    for forbidden in ("atkandi/owner-approval", "AGENT_AUTO_MERGE_ENABLED", "AGENT_REQUIRED_CI_CONTEXT"):
+        require(forbidden not in corpus, f"removed lifecycle documentation remains: {forbidden}")
     require(len(read("policy/AGENTS.md").encode()) <= 4096, "shared policy exceeds the 4 KiB budget")
 
 
