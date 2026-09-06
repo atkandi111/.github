@@ -10,8 +10,8 @@ on:
       requested_issue_number:
         description: Previously authorized Issue to retry; zero for event-driven runs.
         required: false
-        default: 0
-        type: number
+        default: "0"
+        type: string
       base_ref:
         required: false
         default: main
