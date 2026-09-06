@@ -247,6 +247,8 @@ def test_workflow_trust_boundaries() -> None:
         require(forbidden not in agent, f"removed lifecycle machinery remains: {forbidden}")
     require("issues:" in caller and "types: [opened]" in caller, "Issue-opened caller missing")
     require("pull_request_review:" in caller and "changes_requested" in caller, "revision caller missing")
+    require("issue_number:\n        description: Previously authorized Issue to recover.\n        required: true\n        type: string" in caller, "manual retry input must avoid GitHub reusable-workflow number forwarding")
+    require("requested_issue_number: ${{ inputs.issue_number || '0' }}" in caller, "manual retry input is not forwarded as a validated string")
     require("PUBLISHER_APP_PRIVATE_KEY" in caller and "OPENAI_API_KEY" in caller, "caller credentials missing")
     require("PUBLISHER_APP_CLIENT_ID is not configured" in agent, "missing publisher identity does not fail closed")
     require("token: ${{ steps.publisher_token.outputs.token }}" in agent, "publication does not use the scoped App token")
