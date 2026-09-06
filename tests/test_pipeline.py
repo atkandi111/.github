@@ -251,6 +251,8 @@ def test_workflow_trust_boundaries() -> None:
     require("PUBLISHER_APP_CLIENT_ID is not configured" in agent, "missing publisher identity does not fail closed")
     require("token: ${{ steps.publisher_token.outputs.token }}" in agent, "publication does not use the scoped App token")
     require("AGENT_PIPELINE_ENABLED" in caller, "pipeline kill switch missing")
+    require("LIVE_PIPELINE_ENABLED: ${{ vars.AGENT_PIPELINE_ENABLED || 'false' }}" in agent, "publisher does not recheck the repository kill switch")
+    require("actions/variables/AGENT_PIPELINE_ENABLED" not in agent, "publisher uses an unsupported GITHUB_TOKEN variable API read")
     require("AGENT_AUTO_MERGE_ENABLED" not in caller and "AGENT_REQUIRED_CI_CONTEXT" not in caller, "removed merge settings remain")
     require("@codex implement" not in agent and "@codex review" not in agent, "workflow triggers native Codex text commands")
 

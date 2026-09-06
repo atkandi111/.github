@@ -366,6 +366,7 @@ jobs:
           BASE_REF: ${{ inputs.base_ref }}
           PROTECTED_PATHS: ${{ inputs.protected_paths }}
           PUBLISHER_CLIENT_ID: ${{ inputs.publisher_client_id }}
+          LIVE_PIPELINE_ENABLED: ${{ vars.AGENT_PIPELINE_ENABLED || 'false' }}
           POLICY: ${{ github.workspace }}/.atkandi-platform/scripts/pipeline_policy.py
           RESULT_DIR: ${{ runner.temp }}/implementation-result
         run: |
@@ -421,8 +422,7 @@ jobs:
           gh api "repos/$GITHUB_REPOSITORY/issues/$ISSUE_NUMBER" > "$RUNNER_TEMP/issue.json"
           jq -e --arg owner "$GITHUB_REPOSITORY_OWNER" \
             '.state == "open" and .user.login == $owner and (.pull_request | not)' "$RUNNER_TEMP/issue.json" >/dev/null
-          live_enabled=$(gh api "repos/$GITHUB_REPOSITORY/actions/variables/AGENT_PIPELINE_ENABLED" --jq '.value')
-          [[ "$live_enabled" == true ]] || { echo '::error::Pipeline kill switch changed before publication'; exit 1; }
+          [[ "$LIVE_PIPELINE_ENABLED" == true ]] || { echo '::error::Pipeline kill switch changed before publication'; exit 1; }
           gh api --paginate --slurp "repos/$GITHUB_REPOSITORY/issues/$ISSUE_NUMBER/events?per_page=100" \
             > "$RUNNER_TEMP/receipt-events.json"
           python3 "$POLICY" receipt --events "$RUNNER_TEMP/receipt-events.json"
