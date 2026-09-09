@@ -27,4 +27,4 @@ Document only rules that differ from, or add necessary context to, the portfolio
 
 ## Done
 
-Keep changes within the Issue, update relevant documentation when durable behavior or workflow changes, add appropriate tests, and run applicable checks. If a meaningful user-visible or product decision is unspecified, stop and state the missing decision. The clean publisher, not the implementation task, owns branch and pull-request publication. Normal PR CI and optional native Codex review inform the owner; only the owner manually merges.
+Keep changes within the Issue, update relevant documentation when durable behavior or workflow changes, and report whether documentation was updated, unnecessary, or requires owner action. Reuse existing patterns and explain why the result is the smallest safe coherent change. Add appropriate tests and run applicable checks. If a meaningful user-visible or product decision is unspecified, stop and state the missing decision. The clean publisher, not the implementation task, owns branch and pull-request publication. Normal PR CI and optional native Codex review inform the owner; only the owner manually merges.

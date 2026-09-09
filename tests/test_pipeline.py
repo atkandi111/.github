@@ -77,7 +77,16 @@ def implementation_result(status: str = "implemented") -> dict:
         "question": None,
         "scope": ["Updated the focused implementation."],
         "acceptance_evidence": ["The requested behavior is covered."],
-        "documentation": "Updated the relevant workflow documentation.",
+        "documentation": {
+            "status": "updated",
+            "paths": ["docs/workflow.md"],
+            "rationale": "Durable workflow behavior changed.",
+        },
+        "minimality": {
+            "reused": "Existing policy validation and Merge Brief rendering.",
+            "why_smallest": "Extends the current result contract without another service or review loop.",
+            "excluded": "No line-count gate or AI merge decision.",
+        },
         "validation": ["Deterministic CI is authoritative."],
         "review_focus": "Review the focused behavior change.",
         "risk": "Low; limited to the requested path.",
@@ -146,6 +155,7 @@ def test_pipeline_policy_artifacts_and_rendering() -> None:
 
     result = implementation_result()
     policy.validate_result(result)
+    policy.validate_result(result, ["docs/workflow.md", "src/app.ts"])
     invalid = {**result, "unexpected": True}
     try:
         policy.validate_result(invalid)
@@ -153,6 +163,35 @@ def test_pipeline_policy_artifacts_and_rendering() -> None:
         pass
     else:
         raise AssertionError("unexpected result fields were accepted")
+
+    invalid_results = (
+        {**result, "documentation": {**result["documentation"], "rationale": " "}},
+        {**result, "documentation": {"status": "not_needed", "paths": ["docs/workflow.md"], "rationale": "No durable change."}},
+        {**result, "documentation": {"status": "owner_required", "paths": [], "rationale": "Protected runbook."}},
+        {**result, "documentation": {**result["documentation"], "paths": ["../outside.md"]}},
+        {**result, "documentation": {**result["documentation"], "paths": ["docs/./workflow.md"]}},
+        {**result, "minimality": {**result["minimality"], "why_smallest": ""}},
+    )
+    for invalid_result in invalid_results:
+        try:
+            policy.validate_result(invalid_result)
+        except policy.ContractError:
+            pass
+        else:
+            raise AssertionError(f"invalid structured responsibility was accepted: {invalid_result}")
+
+    try:
+        policy.validate_result(result, ["src/app.ts"])
+    except policy.ContractError:
+        pass
+    else:
+        raise AssertionError("documentation declared as updated was absent from the patch")
+
+    not_needed = {
+        **result,
+        "documentation": {"status": "not_needed", "paths": [], "rationale": "Behavior and workflow are unchanged."},
+    }
+    policy.validate_result(not_needed, ["src/app.ts"])
 
     patch = b"diff --git a/a b/a\n"
     provenance = {
@@ -214,15 +253,46 @@ def test_pipeline_policy_artifacts_and_rendering() -> None:
     require("<!-- hidden -->" not in brief and "&lt;!-- hidden --&gt;" in brief, "Merge Brief did not neutralize HTML")
     require("Closes #99" not in brief and "Fixes https://" not in brief and "@person" not in brief, "model prose retained GitHub side effects")
     require(brief.count("Closes #12") == 1, "renderer did not keep exactly one trusted closing reference")
-    for heading in ("Outcome", "Scope delivered", "Acceptance evidence", "Validation", "Agent review", "Review focus", "Risk and rollback"):
+    for heading in (
+        "Outcome",
+        "Scope delivered",
+        "Acceptance evidence",
+        "Validation",
+        "Documentation",
+        "Minimality and scope control",
+        "Agent review",
+        "Review focus",
+        "Risk and rollback",
+    ):
         require(f"### {heading}" in brief, f"Merge Brief is missing {heading}")
+    require("docs/workflow.md" in brief and "smallest safe change" in brief, "responsibility evidence missing from Merge Brief")
     require("Closes #12" in brief and "b" * 40 in brief, "Merge Brief linkage/provenance missing")
+
+    owner_required = {
+        **result,
+        "documentation": {
+            "status": "owner_required",
+            "paths": ["docs/operations/release.md"],
+            "rationale": "The protected runbook requires owner review.",
+        },
+    }
+    owner_brief = policy.render_merge_brief(
+        owner_required,
+        issue,
+        head_sha="b" * 40,
+        ci_state="Passed",
+        review_state="Advisory.",
+        merge_note="The owner merges manually.",
+    )
+    require("Owner action required before merge" in owner_brief and "**Blocked**" in owner_brief, "owner documentation blocker is not visible")
 
     revision = review_event()
     revision["review_comments"] = [[{"path": "src/app.ts", "line": 9, "body": "Handle the empty value."}]]
     prompt = policy.build_prompt(issue, revision, "revision")
     require("Please fix this." in prompt, "revision summary missing from prompt")
     require("src/app.ts:9: Handle the empty value." in prompt, "inline review feedback missing from prompt")
+    require("owner_required keeps the pull request in draft" in prompt, "documentation draft contract missing from prompt")
+    require("smallest safe coherent change" in prompt, "minimality evidence contract missing from prompt")
 
 
 def test_workflow_trust_boundaries() -> None:
@@ -237,12 +307,18 @@ def test_workflow_trust_boundaries() -> None:
     require("contents: read" in implement_block and "contents: write" not in implement_block, "implementation can write GitHub contents")
     require("pull-requests: write" not in implement_block and "publisher_private_key" not in implement_block, "implementation can publish")
     require("permission-profile: \":workspace\"" in implement_block and "safety-strategy: drop-sudo" in implement_block, "Codex sandbox boundary missing")
+    schema_line = next(line.strip() for line in implement_block.splitlines() if line.strip().startswith('{"type":"object"'))
+    schema = json.loads(schema_line)
+    require(schema["properties"]["documentation"]["properties"]["status"]["enum"] == ["updated", "not_needed", "owner_required"], "documentation schema dispositions drifted")
+    require(set(schema["properties"]["minimality"]["required"]) == {"reused", "why_smallest", "excluded"}, "minimality schema drifted")
     require("Clean deterministic publisher" in agent and "apply --check" in agent, "clean publisher validation missing")
     require("reviews/$review_id/comments" in agent and "review_comments" in agent, "revision does not include inline review feedback")
     require('gsub("@"; "&#64;")' in agent and 'gsub("#"; "&#35;")' in agent, "untrusted handoff prose can trigger GitHub side effects")
     require("actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1" in agent, "publisher App token is not pinned")
     require("permission-contents: write" in agent and "permission-administration" not in agent, "publisher App permissions drifted")
-    require("gh pr create" in agent and "--draft" not in agent, "publisher does not create a ready PR")
+    require("documentation_status" in agent and "--draft" in agent, "owner-required documentation does not create a draft PR")
+    require('gh pr ready "$pr_number" --repo "$GITHUB_REPOSITORY" --undo' in agent, "owner-required documentation cannot return a ready PR to draft")
+    require('validate-result --result "$result" --paths "$RUNNER_TEMP/changed-files"' in agent, "updated documentation paths are not checked against the patch")
     for forbidden in ("gh pr merge", "owner-approval", "auto_merge", "required_ci_context", "Published deterministic CI", "Ready for owner review"):
         require(forbidden not in agent, f"removed lifecycle machinery remains: {forbidden}")
     require("issues:" in caller and "types: [opened]" in caller, "Issue-opened caller missing")
@@ -269,9 +345,10 @@ def test_issue_and_handoff_contract() -> None:
     require("queued automatically" in implementation, "default queue behavior is unclear")
     require("@codex implement" in implementation and "duplicate" in implementation, "duplicate native trigger warning missing")
     require("does not authorize or start Codex" in planning, "planning boundary missing")
-    for field in ("Dependencies and likely overlap", "Integration contract revision"):
+    for field in ("Documentation impact", "Dependencies and likely overlap", "Integration contract revision"):
         require(field in implementation, f"Implementation form is missing {field}")
-    for heading in ("Outcome", "Acceptance evidence", "Validation", "Agent review", "Review focus", "Risk and rollback"):
+    require("id: documentation-impact" in implementation and "required: true" in implementation.split("id: documentation-impact", 1)[1].split("- type:", 1)[0], "documentation impact is not an explicit Issue decision")
+    for heading in ("Outcome", "Acceptance evidence", "Validation", "Documentation", "Minimality and scope control", "Agent review", "Review focus", "Risk and rollback"):
         require(heading in brief, f"account Merge Brief is missing {heading}")
 
 

@@ -273,7 +273,7 @@ jobs:
           prompt-file: ${{ github.workspace }}/client/.codex-prompt.md
           output-file: ${{ github.workspace }}/client/.codex-result.json
           output-schema: |
-            {"type":"object","additionalProperties":false,"required":["status","summary","question","scope","acceptance_evidence","documentation","validation","review_focus","risk","rollback","followups"],"properties":{"status":{"type":"string","enum":["implemented","blocked","needs_input"]},"summary":{"type":"string","maxLength":600},"question":{"type":["string","null"],"maxLength":240},"scope":{"type":"array","maxItems":12,"items":{"type":"string","maxLength":300}},"acceptance_evidence":{"type":"array","maxItems":16,"items":{"type":"string","maxLength":400}},"documentation":{"type":"string","maxLength":400},"validation":{"type":"array","maxItems":12,"items":{"type":"string","maxLength":300}},"review_focus":{"type":"string","maxLength":400},"risk":{"type":"string","maxLength":400},"rollback":{"type":"string","maxLength":400},"followups":{"type":"array","maxItems":12,"items":{"type":"string","maxLength":300}}}}
+            {"type":"object","additionalProperties":false,"required":["status","summary","question","scope","acceptance_evidence","documentation","minimality","validation","review_focus","risk","rollback","followups"],"properties":{"status":{"type":"string","enum":["implemented","blocked","needs_input"]},"summary":{"type":"string","maxLength":600},"question":{"type":["string","null"],"maxLength":240},"scope":{"type":"array","maxItems":12,"items":{"type":"string","maxLength":300}},"acceptance_evidence":{"type":"array","maxItems":16,"items":{"type":"string","maxLength":400}},"documentation":{"type":"object","additionalProperties":false,"required":["status","paths","rationale"],"properties":{"status":{"type":"string","enum":["updated","not_needed","owner_required"]},"paths":{"type":"array","maxItems":12,"items":{"type":"string","maxLength":300}},"rationale":{"type":"string","minLength":1,"maxLength":400}}},"minimality":{"type":"object","additionalProperties":false,"required":["reused","why_smallest","excluded"],"properties":{"reused":{"type":"string","minLength":1,"maxLength":400},"why_smallest":{"type":"string","minLength":1,"maxLength":400},"excluded":{"type":"string","minLength":1,"maxLength":400}}},"validation":{"type":"array","maxItems":12,"items":{"type":"string","maxLength":300}},"review_focus":{"type":"string","maxLength":400},"risk":{"type":"string","maxLength":400},"rollback":{"type":"string","maxLength":400},"followups":{"type":"array","maxItems":12,"items":{"type":"string","maxLength":300}}}}
 
       - name: Capture the implementation as inert data
         shell: bash
@@ -418,6 +418,7 @@ jobs:
           fi
           git -C validation diff --cached --no-renames --name-only -z "$START_SHA" > "$RUNNER_TEMP/changed-files"
           python3 "$POLICY" protected --paths "$RUNNER_TEMP/changed-files" --extra "$PROTECTED_PATHS"
+          python3 "$POLICY" validate-result --result "$result" --paths "$RUNNER_TEMP/changed-files"
 
           gh api "repos/$GITHUB_REPOSITORY/issues/$ISSUE_NUMBER" > "$RUNNER_TEMP/issue.json"
           jq -e --arg owner "$GITHUB_REPOSITORY_OWNER" \
@@ -507,6 +508,12 @@ jobs:
             --merge-note 'The repository owner reviews and merges the current revision manually.' \
             --output "$RUNNER_TEMP/merge-brief.md"
           pr_title=$(< "$RUNNER_TEMP/pr-title")
+          documentation_status=$(jq -r '.documentation.status' "$RESULT_DIR/result.json")
+          [[ "$documentation_status" == updated || "$documentation_status" == not_needed || "$documentation_status" == owner_required ]]
+          draft_args=()
+          if [[ "$documentation_status" == owner_required ]]; then
+            draft_args+=(--draft)
+          fi
 
           if [[ "$PR_NUMBER" != 0 ]]; then
             pr_number=$PR_NUMBER
@@ -516,7 +523,7 @@ jobs:
             pr_number=''
             for attempt in 1 2 3; do
               if pr_url=$(gh pr create --repo "$GITHUB_REPOSITORY" --base "$BASE_REF" --head "$BRANCH" \
-                  --title "$pr_title" --body-file "$RUNNER_TEMP/merge-brief.md"); then
+                  --title "$pr_title" --body-file "$RUNNER_TEMP/merge-brief.md" "${draft_args[@]}"); then
                 pr_number=${pr_url##*/}
                 break
               fi
@@ -537,6 +544,9 @@ jobs:
           jq -e --arg branch "$BRANCH" --arg head "$head_sha" --arg base "$BASE_REF" \
             '.state == "OPEN" and .headRefName == $branch and .headRefOid == $head and .baseRefName == $base' \
             <<< "$current" >/dev/null || { echo '::error::Published PR does not match the committed revision'; exit 1; }
-          if [[ $(jq -r '.isDraft' <<< "$current") == true ]]; then
+          is_draft=$(jq -r '.isDraft' <<< "$current")
+          if [[ "$documentation_status" == owner_required && "$is_draft" == false ]]; then
+            gh pr ready "$pr_number" --repo "$GITHUB_REPOSITORY" --undo
+          elif [[ "$documentation_status" != owner_required && "$is_draft" == true ]]; then
             gh pr ready "$pr_number" --repo "$GITHUB_REPOSITORY"
           fi

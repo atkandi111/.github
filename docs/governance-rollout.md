@@ -13,7 +13,7 @@ The Portfolio Project is the canonical view of priority and status. It is never 
 
 The reconciler is idempotent and edits only Status. It never edits Priority, Waiting On, or unrelated fields. Dragging a Project card, changing Status, editing text, or adding a label later cannot execute, publish, review, merge, or deploy anything.
 
-The publisher opens one ready PR with a Merge Brief and verified SHA. Normal CI and optional native Codex review follow. The owner manually merges or requests changes; a valid changes-requested review updates the same PR.
+The publisher opens one PR with a Merge Brief and verified SHA. Resolved documentation produces a ready PR; owner-required documentation keeps it draft. Normal CI and optional native Codex review follow. The owner manually merges or requests changes; a valid changes-requested review updates the same PR.
 
 ## Portfolio membership
 

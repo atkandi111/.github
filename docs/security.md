@@ -26,11 +26,11 @@ The App token is required because publication must trigger normal PR automation 
 
 ## Artifact and publisher boundary
 
-Codex edits an isolated checkout and emits only structured Merge Brief data, a binary-capable Git patch, and provenance containing repository, Issue, mode, exact start SHA, run ID/attempt, and patch SHA-256.
+Codex edits an isolated checkout and emits only structured Merge Brief data, a binary-capable Git patch, and provenance containing repository, Issue, mode, exact start SHA, run ID/attempt, and patch SHA-256. The structured result includes a typed documentation disposition with paths and rationale plus concise minimality evidence.
 
-On a fresh runner, the publisher validates the result and provenance, rechecks the open owner-authored Issue and receipt, verifies the expected branch/PR and start SHA, applies the patch with `git apply --check`, and rejects protected paths. Only then does it mint the App token.
+On a fresh runner, the publisher validates the result and provenance, rechecks the open owner-authored Issue and receipt, verifies the expected branch/PR and start SHA, applies the patch with `git apply --check`, rejects protected paths, and confirms every path declared as updated documentation is in the patch. Only then does it mint the App token.
 
-The publisher creates or updates only `issue/<number>` and one ready PR. Concurrent head changes fail instead of being overwritten, and the published SHA is verified. Owner changes-requested reviews must target that exact SHA; their summary and associated inline comments become untrusted revision input.
+The publisher creates or updates only `issue/<number>` and one PR. It keeps the PR in draft when documentation requires owner action and marks it ready when documentation responsibility is resolved. Concurrent head changes fail instead of being overwritten, and the published SHA is verified. Owner changes-requested reviews must target that exact SHA; their summary and associated inline comments become untrusted revision input.
 
 The Codex job uses `permission-profile: :workspace` and `safety-strategy: drop-sudo`. No privileged secret is used after Codex in that job. Its output remains untrusted until validation.
 

@@ -26,7 +26,7 @@ Before publication, confirm the Issue records:
 - confirmed product, design, technical, or compatibility decisions;
 - explicit out-of-scope boundaries;
 - expected validation;
-- likely documentation impact;
+- documentation paths that likely need to change, or `None` with a concise reason;
 - dependencies and overlapping touchpoints;
 - its parent or related Issues; and
 - the reviewed integration-contract revision when cross-repository work is involved.
@@ -41,7 +41,7 @@ Keep unresolved product decisions in Planning / deferred. Prefer outcomes and co
 4. Do not add `@codex implement`. Native Cloud execution is a separate path and would risk duplicate work.
 5. Issue text, comments, edited text, Project fields, and labels added after creation cannot authorize execution. Existing open Issues are not bulk-triggered.
 6. The repository queue runs one Issue at a time, retains up to 100 waiting runs through `queue: max`, and allows different repositories to run in parallel. Waiting-time FIFO is sufficient; Issue-number order is not guaranteed.
-7. The pipeline publishes one ready PR and completes its Merge Brief. Normal PR CI and optional native Codex review follow.
+7. The pipeline completes a Merge Brief with documentation disposition and minimality evidence. It publishes a ready PR when documentation responsibility is resolved, or a draft when protected or human-owned documentation remains required. Normal PR CI and optional native Codex review follow.
 8. An owner changes-requested review for the exact current SHA updates the same PR using its summary and inline comments.
 9. When satisfied with the current revision, the owner manually clicks **Merge**.
 
