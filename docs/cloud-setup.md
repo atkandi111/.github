@@ -50,7 +50,7 @@ Connect the repository and enable automatic review in [Codex Code Review setting
 
 ## First real Issue
 
-Use the first real low-risk Implementation Issue as the observation pass. Confirm one workflow run, one `issue/<number>` branch, one ready PR, the exact published SHA in its Merge Brief, and normal PR CI without a manual Create PR step.
+Use the first real low-risk Implementation Issue as the observation pass. Confirm one workflow run, one `issue/<number>` branch, one PR, the exact published SHA plus documentation and minimality evidence in its Merge Brief, and normal PR CI without a manual Create PR step. Confirm the PR is ready when documentation responsibility is resolved and remains draft when owner action is required.
 
 If a run fails, correct the configuration and dispatch the Issue number through the workflow's owner-only retry. Keep the same Issue and PR.
 

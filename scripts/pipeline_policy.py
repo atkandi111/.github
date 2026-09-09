@@ -9,7 +9,7 @@ import hashlib
 import html
 import json
 import os
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 import re
 import sys
 from typing import Any, Iterable
@@ -174,6 +174,12 @@ def _require_text(value: Any, name: str, maximum: int, *, nullable: bool = False
         raise ContractError(f"{name} must be text no longer than {maximum} characters")
 
 
+def _require_nonempty_text(value: Any, name: str, maximum: int) -> None:
+    _require_text(value, name, maximum)
+    if not value.strip():
+        raise ContractError(f"{name} must not be empty")
+
+
 def _require_text_list(value: Any, name: str, maximum_items: int, maximum_length: int) -> None:
     if not isinstance(value, list) or len(value) > maximum_items:
         raise ContractError(f"{name} must contain at most {maximum_items} items")
@@ -181,10 +187,33 @@ def _require_text_list(value: Any, name: str, maximum_items: int, maximum_length
         _require_text(item, name, maximum_length)
 
 
+def _require_paths(value: Any, name: str, maximum_items: int = 12) -> list[str]:
+    if not isinstance(value, list) or len(value) > maximum_items:
+        raise ContractError(f"{name} must contain at most {maximum_items} paths")
+    paths: list[str] = []
+    for item in value:
+        _require_nonempty_text(item, name, 300)
+        path = PurePosixPath(item)
+        if (
+            item.startswith("/")
+            or path.is_absolute()
+            or path.as_posix() != item
+            or any(part in {"", ".", ".."} for part in path.parts)
+        ):
+            raise ContractError(f"{name} must contain normalized repository-relative paths")
+        if "\x00" in item or "\n" in item or "\r" in item:
+            raise ContractError(f"{name} contains an invalid path")
+        paths.append(item)
+    if len(paths) != len(set(paths)):
+        raise ContractError(f"{name} contains duplicate paths")
+    return paths
+
+
 RESULT_KEYS = {
     "acceptance_evidence",
     "documentation",
     "followups",
+    "minimality",
     "question",
     "review_focus",
     "risk",
@@ -196,14 +225,36 @@ RESULT_KEYS = {
 }
 
 
-def validate_result(value: Any) -> dict[str, Any]:
+def validate_result(value: Any, changed_paths: Iterable[str] | None = None) -> dict[str, Any]:
     if not isinstance(value, dict) or set(value) != RESULT_KEYS:
         raise ContractError("implementation result has unexpected fields")
     if value.get("status") not in {"implemented", "blocked", "needs_input"}:
         raise ContractError("implementation status is invalid")
     _require_text(value.get("summary"), "summary", 600)
     _require_text(value.get("question"), "question", 240, nullable=True)
-    _require_text(value.get("documentation"), "documentation", 400)
+    documentation = value.get("documentation")
+    if not isinstance(documentation, dict) or set(documentation) != {"status", "paths", "rationale"}:
+        raise ContractError("documentation must contain exactly status, paths, and rationale")
+    documentation_status = documentation.get("status")
+    if documentation_status not in {"updated", "not_needed", "owner_required"}:
+        raise ContractError("documentation status is invalid")
+    documentation_paths = _require_paths(documentation.get("paths"), "documentation.paths")
+    _require_nonempty_text(documentation.get("rationale"), "documentation.rationale", 400)
+    if documentation_status == "not_needed" and documentation_paths:
+        raise ContractError("not_needed documentation must not declare paths")
+    if documentation_status in {"updated", "owner_required"} and not documentation_paths:
+        raise ContractError(f"{documentation_status} documentation must declare paths")
+    if documentation_status == "updated" and changed_paths is not None:
+        changed = set(changed_paths)
+        missing = [path for path in documentation_paths if path not in changed]
+        if missing:
+            raise ContractError(f"documentation paths were not changed: {', '.join(missing)}")
+
+    minimality = value.get("minimality")
+    if not isinstance(minimality, dict) or set(minimality) != {"reused", "why_smallest", "excluded"}:
+        raise ContractError("minimality must contain exactly reused, why_smallest, and excluded")
+    for field in ("reused", "why_smallest", "excluded"):
+        _require_nonempty_text(minimality.get(field), f"minimality.{field}", 400)
     _require_text(value.get("review_focus"), "review_focus", 400)
     _require_text(value.get("risk"), "risk", 400)
     _require_text(value.get("rollback"), "rollback", 400)
@@ -298,6 +349,18 @@ def render_merge_brief(
     if not isinstance(number, int) or number < 1:
         raise ContractError("Issue number is invalid")
     title = _clean(str(issue.get("title") or f"Issue #{number}"))
+    documentation = result["documentation"]
+    documentation_labels = {
+        "updated": "Updated in this pull request",
+        "not_needed": "Not needed",
+        "owner_required": "Owner action required before merge",
+    }
+    documentation_gate = (
+        "- Merge readiness: **Blocked** until the owner resolves the declared documentation paths."
+        if documentation["status"] == "owner_required"
+        else "- Merge readiness: Documentation responsibility resolved for this revision."
+    )
+    minimality = result["minimality"]
     return f"""<!-- atkandi-issue-pipeline issue={number} -->
 ## Merge Brief
 
@@ -324,6 +387,20 @@ Closes #{number}
 
 {_bullets(result['validation'], 'No implementation-side command was run; deterministic CI is authoritative.')}
 - Deterministic CI: {_clean(ci_state)}
+
+### Documentation
+
+- Disposition: {documentation_labels[documentation['status']]}
+- Rationale: {_clean(documentation['rationale'])}
+- Paths:
+{_bullets(documentation['paths'])}
+{documentation_gate}
+
+### Minimality and scope control
+
+- Reused: {_clean(minimality['reused'])}
+- Why this is the smallest safe change: {_clean(minimality['why_smallest'])}
+- Intentionally excluded: {_clean(minimality['excluded'])}
 
 ### Agent review
 
@@ -364,7 +441,9 @@ def build_prompt(issue: dict[str, Any], payload: dict[str, Any], mode: str) -> s
         inline_feedback = "\n".join(lines)
     return f"""Implement only the authorized repository Issue below. Read PROJECT.md and every applicable AGENTS.md before editing. Make the smallest coherent change that satisfies the acceptance criteria.
 
-Update relevant documentation in the same change whenever durable behavior, architecture, operations, or developer workflow changes. In the structured result, summarize the documentation updated or briefly explain why none was needed; the publisher will keep this detail out of the Merge Brief unless it belongs in delivered scope.
+Update relevant documentation in the same change whenever durable behavior, architecture, operations, or developer workflow changes. Classify documentation as updated, not_needed, or owner_required; name the exact repository-relative paths for updated or owner_required, and give a concise rationale. Use owner_required when necessary documentation is protected or requires a human decision. That disposition will be visible in the Merge Brief, and owner_required keeps the pull request in draft.
+
+In the structured result, explain what existing code or patterns you reused, why the implementation is the smallest safe coherent change, and what adjacent work you deliberately excluded. Do not optimize for line or file count, and do not split tightly coupled work merely to look smaller.
 
 Do not commit, push, create or edit a pull request, merge, deploy, provision infrastructure, access production/shared credentials, or modify protected workflow/action paths or AGENTS.md. Do not run repository-provided install, build, test, lint, hook, deployment, or infrastructure commands; separate credential-free CI is authoritative. You may inspect and edit files with standard tools. Return needs_input instead of guessing when material product intent is missing.
 
@@ -412,6 +491,7 @@ def main() -> int:
 
     validate = subparsers.add_parser("validate-result")
     validate.add_argument("--result", required=True, type=Path)
+    validate.add_argument("--paths", type=Path)
 
     provenance = subparsers.add_parser("validate-provenance")
     provenance.add_argument("--provenance", required=True, type=Path)
@@ -462,7 +542,10 @@ def main() -> int:
             if not has_authorization_receipt(_load(args.events), args.actor):
                 raise ContractError("trusted authorization receipt is missing")
         elif args.command == "validate-result":
-            validate_result(_load(args.result))
+            changed_paths = None
+            if args.paths is not None:
+                changed_paths = [os.fsdecode(value) for value in args.paths.read_bytes().split(b"\0") if value]
+            validate_result(_load(args.result), changed_paths)
         elif args.command == "validate-provenance":
             validate_provenance(
                 _load(args.provenance),

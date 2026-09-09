@@ -23,6 +23,19 @@ Closes #
 
 - _Command — result_
 
+### Documentation
+
+- Disposition: _Updated in this pull request, Not needed, or Owner action required before merge._
+- Rationale: _Explain the decision._
+- Paths: _List exact repository-relative paths, or `None`._
+- Merge readiness: _Resolved, or blocked pending owner action._
+
+### Minimality and scope control
+
+- Reused: _Existing code, patterns, or platform capabilities used._
+- Why this is the smallest safe change: _Concise explanation._
+- Intentionally excluded: _Adjacent work deliberately left out._
+
 ### Agent review
 
 - Deterministic CI: _Passed run URL or current state._

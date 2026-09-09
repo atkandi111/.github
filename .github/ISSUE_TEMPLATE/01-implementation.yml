@@ -10,7 +10,7 @@ body:
         Choose one cohesive, reviewable repository outcome that should normally produce one branch and one pull request. Combine tightly coupled same-repository details; split independent or cross-repository outcomes.
 
         Planning guide: https://github.com/atkandi111/.github/blob/main/docs/issue-planning.md
-        Do not add an `@codex implement` mention: native Cloud execution would duplicate the Actions-hosted implementation run. The pipeline publishes one ready pull request with its Merge Brief; normal pull-request CI and optional Codex review follow.
+        Do not add an `@codex implement` mention: native Cloud execution would duplicate the Actions-hosted implementation run. The pipeline publishes one pull request with its Merge Brief; unresolved owner-required documentation keeps it in draft. Normal pull-request CI and optional Codex review follow.
   - type: textarea
     id: outcome
     attributes:
@@ -45,9 +45,10 @@ body:
     id: documentation-impact
     attributes:
       label: Documentation impact
-      description: Optional. Note any README, runbook, architecture, product, or developer guidance that may need to change with the implementation.
+      description: Name the README, runbook, architecture, product, or developer guidance that should change, or write None with a concise reason.
+      placeholder: "Paths: docs/example.md\nReason: durable behavior changes\n—or—\nNone: implementation preserves documented behavior"
     validations:
-      required: false
+      required: true
   - type: textarea
     id: validation
     attributes:

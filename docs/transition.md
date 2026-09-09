@@ -1,6 +1,6 @@
 # Transition to automatic Issue-to-PR publication
 
-The prior flow used native Codex Cloud implementation followed by a manual **Create PR** handoff. The new flow uses an Actions-hosted Codex job plus a clean non-AI publisher so completed work reliably reaches one ready PR.
+The prior flow used native Codex Cloud implementation followed by a manual **Create PR** handoff. The new flow uses an Actions-hosted Codex job plus a clean non-AI publisher so completed work reliably reaches one PR. It is ready when documentation responsibility is resolved and remains draft when owner action is required.
 
 ## Preserve existing work
 

@@ -9,7 +9,7 @@ The solo-developer workflow has two attention points:
 1. Carefully prepare and publish an **Implementation issue** when work is ready. Publishing queues it automatically. Use **Planning / deferred** when it should not run.
 2. Review the resulting pull request. Request changes on the same PR or click **Merge** when satisfied.
 
-The pipeline handles the middle: one repository-scoped run, one `issue/<number>` branch, one ready PR, and a completed Merge Brief. Normal PR CI and optional native Codex review then run. The Project mirrors status only.
+The pipeline handles the middle: one repository-scoped run, one `issue/<number>` branch, one PR, and a completed Merge Brief. The PR is ready when documentation responsibility is resolved and remains draft when owner action is required. Normal PR CI and optional native Codex review then run. The Project mirrors status only.
 
 Manual merge is the human approval boundary.
 
@@ -33,9 +33,9 @@ Do not add `@codex implement` to an Issue. That starts a separate native Cloud t
 
 1. The owner publishes an Issue using the inherited **Implementation issue** form. Its original event must contain `implementation` and not `planning`.
 2. Intake records `agent:authorized`. Later text, comments, labels, and Project fields cannot authorize a run.
-3. Codex reads the Issue as untrusted data and produces a patch, structured result, and provenance.
-4. A fresh publisher rechecks the Issue, receipt, start SHA, patch hash, branch/PR state, and protected paths before minting its App token.
-5. It creates or updates `issue/<number>` and one ready PR, verifies the GitHub head SHA, and completes the Merge Brief.
+3. Codex reads the Issue as untrusted data and produces a patch, structured result, and provenance. The result declares documentation as updated, not needed, or owner-required and explains why the implementation is the smallest safe coherent change.
+4. A fresh publisher rechecks the Issue, receipt, start SHA, patch hash, branch/PR state, protected paths, and any declared updated-documentation paths before minting its App token.
+5. It creates or updates `issue/<number>`, verifies the GitHub head SHA, and completes the Merge Brief. Resolved documentation produces a ready PR; owner-required documentation keeps it in draft.
 6. Normal PR CI and optional Codex review run.
 7. An owner changes-requested review for the exact current SHA queues one revision using the review summary and inline comments. The same PR is updated.
 8. The owner manually merges the accepted revision. An owner-only dispatch can retry previously authorized work after an operational failure.
